@@ -4,7 +4,7 @@ const ASSETS_TO_CACHE = [
   "/task-planner/index.html",
   "/task-planner/manifest.json",
   "/task-planner/icons/icon-192x192.png",
-  "/task-planner/icons/icon-192x192.png"
+  "/task-planner/icons/icon-512x512.png"
 ];
 
 self.addEventListener("install", event => {
