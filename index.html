@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Планировщик задач</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#007bff">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f4f6f8;
+      color: #333;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    input, select, button {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-left: 5px solid #007bff;
+      border-radius: 5px;
+      position: relative;
+    }
+
+    li.completed {
+      text-decoration: line-through;
+      opacity: 0.6;
+    }
+
+    li.overdue {
+      border-left-color: red;
+      background-color: #ffe6e6;
+    }
+
+    .task-title {
+      font-weight: bold;
+    }
+
+    .task-time {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .task-category {
+      font-size: 14px;
+      color: #999;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 5px;
+    }
+
+    .checkbox {
+      margin-right: 10px;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Планировщик задач</h1>
+
+    <form id="task-form">
+      <input type="text" id="task-title" placeholder="Название задачи" required />
+      <input type="datetime-local" id="task-time" required />
+      <select id="task-category">
+        <option value="Работа">Работа</option>
+        <option value="Личное">Личное</option>
+      </select>
+      <button type="submit">Добавить задачу</button>
+    </form>
+
+    <ul id="task-list"></ul>
+  </div>
+
+  <script>
+    const taskForm = document.getElementById("task-form");
+    const taskList = document.getElementById("task-list");
+
+    let tasks = [];
+
+    function saveTasks() {
+      localStorage.setItem("tasks", JSON.stringify(tasks));
+    }
+
+    function loadTasks() {
+      const saved = localStorage.getItem("tasks");
+      if (saved) tasks = JSON.parse(saved);
+    }
+
+    function renderTasks() {
+      taskList.innerHTML = "";
+      tasks.forEach((task, index) => {
+        const now = new Date();
+        const due = new Date(task.time);
+        const isOverdue = !task.done && due < now;
+
+        const li = document.createElement("li");
+        li.className = task.done ? "completed" : isOverdue ? "overdue" : "";
+
+        li.innerHTML = `
+          <div class="task-title">${task.title}</div>
+          <div class="task-time">Дата: ${new Date(task.time).toLocaleString()}</div>
+          <div class="task-category">Категория: ${task.category}</div>
+          <div class="actions">
+            <label><input type="checkbox" class="checkbox" ${task.done ? "checked" : ""} /> Выполнено</label>
+            <button onclick="deleteTask(${index})">Удалить</button>
+          </div>
+        `;
+
+        // Обработчик чекбокса
+        li.querySelector(".checkbox").addEventListener("change", () => {
+          toggleDone(index);
+        });
+
+        taskList.appendChild(li);
+      });
+    }
+
+    function addTask(title, time, category) {
+      tasks.push({ title, time, category, done: false });
+      setReminder(tasks.length - 1);
+      saveTasks();
+      renderTasks();
+    }
+
+    function deleteTask(index) {
+      tasks.splice(index, 1);
+      saveTasks();
+      renderTasks();
+    }
+
+    function toggleDone(index) {
+      tasks[index].done = !tasks[index].done;
+      saveTasks();
+      renderTasks();
+    }
+
+    function setReminder(index) {
+      const task = tasks[index];
+      const dueDate = new Date(task.time);
+      const now = new Date();
+      const timeUntilDue = dueDate.getTime() - now.getTime();
+
+      if (timeUntilDue > 0 && timeUntilDue < 24 * 60 * 60 * 1000) {
+        setTimeout(() => {
+          alert(`Напоминание: Задача "${task.title}" скоро истекает!`);
+        }, timeUntilDue - 5 * 60 * 1000); // Напоминание за 5 минут
+      }
+    }
+
+    taskForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const title = document.getElementById("task-title").value.trim();
+      const time = document.getElementById("task-time").value;
+      const category = document.getElementById("task-category").value;
+
+      if (!title || !time) return;
+
+      if (new Date(time) < new Date()) {
+        alert("Выберите дату в будущем!");
+        return;
+      }
+
+      addTask(title, time, category);
+      taskForm.reset();
+    });
+
+    setInterval(renderTasks, 60000); // Обновлять раз в минуту
+
+    // Инициализация
+    loadTasks();
+    renderTasks();
+
+    // Регистрация Service Worker
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").then(registration => {
+          console.log("Service Worker зарегистрирован:", registration);
+        }).catch(error => {
+          console.log("Ошибка регистрации Service Worker:", error);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
