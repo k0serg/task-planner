@@ -3,8 +3,8 @@ const ASSETS_TO_CACHE = [
   "/task-planner/",
   "/task-planner/index.html",
   "/task-planner/manifest.json",
-  "/task-planner/icon-192.png",
-  "/task-planner/icon-512.png"
+  "/task-planner/icons/icon-192.png",
+  "/task-planner/icons/icon-512.png"
 ];
 
 self.addEventListener("install", event => {
