@@ -104,6 +104,11 @@
       color: #666;
     }
 
+    .task-no-deadline {
+      color: #888;
+      font-style: italic;
+    }
+
     .task-category {
       font-size: 14px;
       color: #999;
@@ -137,7 +142,7 @@
 
     <form id="task-form">
       <input type="text" id="task-title" placeholder="Название задачи" required />
-      <input type="datetime-local" id="task-time" required />
+      <input type="datetime-local" id="task-time" /> <!-- Теперь необязательное поле -->
       <select id="task-category">
         <option value="Работа">Работа</option>
         <option value="Личное">Личное</option>
@@ -201,15 +206,16 @@
       taskList.innerHTML = "";
       filteredTasks.forEach((task, index) => {
         const now = new Date();
-        const due = new Date(task.time);
-        const isOverdue = !task.done && due < now;
+        const isOverdue = task.time && !task.done && new Date(task.time) < now;
 
         const li = document.createElement("li");
         li.className = task.done ? "completed" : isOverdue ? "overdue" : "";
 
         li.innerHTML = `
           <div class="task-title">${task.title}</div>
-          <div class="task-time">Дата: ${new Date(task.time).toLocaleString()}</div>
+          <div class="task-time">
+            ${task.time ? 'Дата: ' + new Date(task.time).toLocaleString() : '<span class="task-no-deadline">Без дедлайна</span>'}
+          </div>
           <div class="task-category">Категория: ${task.category}</div>
           <div class="actions">
             <label><input type="checkbox" class="checkbox" ${task.done ? "checked" : ""} /> Выполнено</label>
@@ -228,7 +234,7 @@
 
     function addTask(title, time, category) {
       tasks.push({ title, time, category, done: false });
-      setReminder(tasks.length - 1);
+      if (time) setReminder(tasks.length - 1); // Только если указано время
       saveTasks();
       renderTasks();
     }
@@ -264,14 +270,10 @@
       const time = document.getElementById("task-time").value;
       const category = document.getElementById("task-category").value;
 
-      if (!title || !time) return;
+      if (!title) return;
 
-      if (new Date(time) < new Date()) {
-        alert("Выберите дату в будущем!");
-        return;
-      }
-
-      addTask(title, time, category);
+      // Допускаем пустое значение time
+      addTask(title, time || null, category);
       taskForm.reset();
     });
 
@@ -284,7 +286,7 @@
     // Регистрация Service Worker
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/task-planner/sw.js").then(registration => {
+        navigator.serviceWorker.register("/sw.js").then(registration => {
           console.log("Service Worker зарегистрирован:", registration);
         }).catch(error => {
           console.log("Ошибка регистрации Service Worker:", error);
