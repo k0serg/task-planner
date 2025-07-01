@@ -60,6 +60,17 @@
       background-color: #0056b3;
     }
 
+    .filters {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .filters select {
+      flex: 1;
+    }
+
     ul {
       list-style: none;
       padding: 0;
@@ -134,6 +145,26 @@
       <button type="submit">Добавить задачу</button>
     </form>
 
+    <!-- Форма фильтрации -->
+    <div class="filters">
+      <label>
+        Статус:
+        <select id="filter-status">
+          <option value="all">Все</option>
+          <option value="completed">Выполненные</option>
+          <option value="active">Невыполненные</option>
+        </select>
+      </label>
+      <label>
+        Категория:
+        <select id="filter-category">
+          <option value="all">Все</option>
+          <option value="Работа">Работа</option>
+          <option value="Личное">Личное</option>
+        </select>
+      </label>
+    </div>
+
     <ul id="task-list"></ul>
   </div>
 
@@ -153,8 +184,22 @@
     }
 
     function renderTasks() {
+      const statusFilter = document.getElementById("filter-status").value;
+      const categoryFilter = document.getElementById("filter-category").value;
+
+      const filteredTasks = tasks.filter(task => {
+        let matchStatus = true;
+        if (statusFilter === "completed") matchStatus = task.done;
+        if (statusFilter === "active") matchStatus = !task.done;
+
+        let matchCategory = true;
+        if (categoryFilter !== "all") matchCategory = task.category === categoryFilter;
+
+        return matchStatus && matchCategory;
+      });
+
       taskList.innerHTML = "";
-      tasks.forEach((task, index) => {
+      filteredTasks.forEach((task, index) => {
         const now = new Date();
         const due = new Date(task.time);
         const isOverdue = !task.done && due < now;
@@ -246,6 +291,10 @@
         });
       });
     }
+
+    // Подключаем фильтры
+    document.getElementById("filter-status").addEventListener("change", renderTasks);
+    document.getElementById("filter-category").addEventListener("change", renderTasks);
   </script>
 </body>
 </html>
