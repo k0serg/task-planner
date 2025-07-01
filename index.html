@@ -84,7 +84,6 @@
       margin-bottom: 10px;
       border-left: 5px solid #007bff;
       border-radius: 5px;
-      position: relative;
     }
 
     li.completed {
@@ -228,7 +227,6 @@
           </div>
         `;
 
-        // Обработчик чекбокса
         li.querySelector(".checkbox").addEventListener("change", () => {
           toggleDone(index);
         });
@@ -271,25 +269,29 @@
       if (timeUntilDue > 0 && timeUntilDue < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
           alert(`Напоминание: Задача "${task.title}" скоро истекает!`);
-        }, timeUntilDue - 5 * 60 * 1000); // Напоминание за 5 минут
+        }, timeUntilDue - 5 * 60 * 1000); // за 5 минут
       }
     }
 
     taskForm.addEventListener("submit", (e) => {
       e.preventDefault();
-      const title = document.getElementById("task-title").value.trim();
-      const timeInput = document.getElementById("task-time").value;
-      const category = document.getElementById("task-category").value;
+      const titleInput = document.getElementById("task-title");
+      const timeInput = document.getElementById("task-time");
+      const categoryInput = document.getElementById("task-category");
+
+      const title = titleInput.value.trim();
+      const time = timeInput.value ? new Date(timeInput.value).toISOString() : null;
+      const category = categoryInput.value;
 
       if (!title) return;
 
-      const time = timeInput ? new Date(timeInput).toISOString() : null;
-
       addTask(title, time, category);
-      taskForm.reset();
+
+      titleInput.value = "";
+      timeInput.value = "";
     });
 
-    setInterval(renderTasks, 60000); // Обновлять раз в минуту
+    setInterval(renderTasks, 60000); // раз в минуту
 
     // Инициализация
     loadTasks();
