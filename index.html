@@ -41,7 +41,9 @@
       margin-bottom: 20px;
     }
 
-    input, select, button {
+    input,
+    select,
+    button {
       padding: 10px;
       font-size: 16px;
       border-radius: 5px;
@@ -142,7 +144,7 @@
 
     <form id="task-form">
       <input type="text" id="task-title" placeholder="Название задачи" required />
-      <input type="datetime-local" id="task-time" /> <!-- Теперь необязательное поле -->
+      <input type="datetime-local" id="task-time" /> <!-- Необязательное поле -->
       <select id="task-category">
         <option value="Работа">Работа</option>
         <option value="Личное">Личное</option>
@@ -214,7 +216,10 @@
         li.innerHTML = `
           <div class="task-title">${task.title}</div>
           <div class="task-time">
-            ${task.time ? 'Дата: ' + new Date(task.time).toLocaleString() : '<span class="task-no-deadline">Без дедлайна</span>'}
+            ${task.time 
+              ? 'Дата: ' + new Date(task.time).toLocaleString() 
+              : '<span class="task-no-deadline">Без дедлайна</span>'
+            }
           </div>
           <div class="task-category">Категория: ${task.category}</div>
           <div class="actions">
@@ -233,8 +238,14 @@
     }
 
     function addTask(title, time, category) {
-      tasks.push({ title, time, category, done: false });
-      if (time) setReminder(tasks.length - 1); // Только если указано время
+      tasks.push({
+        title,
+        time: time || null,
+        category,
+        done: false
+      });
+
+      if (time) setReminder(tasks.length - 1);
       saveTasks();
       renderTasks();
     }
@@ -267,13 +278,14 @@
     taskForm.addEventListener("submit", (e) => {
       e.preventDefault();
       const title = document.getElementById("task-title").value.trim();
-      const time = document.getElementById("task-time").value;
+      const timeInput = document.getElementById("task-time").value;
       const category = document.getElementById("task-category").value;
 
       if (!title) return;
 
-      // Допускаем пустое значение time
-      addTask(title, time || null, category);
+      const time = timeInput ? new Date(timeInput).toISOString() : null;
+
+      addTask(title, time, category);
       taskForm.reset();
     });
 
