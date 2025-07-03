@@ -6,7 +6,7 @@
   <title>Планировщик задач</title>
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="/task-planner/manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
 
@@ -14,12 +14,19 @@
     * {
       box-sizing: border-box;
       font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
     }
 
     body {
-      margin: 0;
       background: #f4f6f8;
       color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    body.dark {
+      background: #1e1e1e;
+      color: #eee;
     }
 
     .container {
@@ -32,6 +39,7 @@
       text-align: center;
       font-size: 24px;
       margin-bottom: 20px;
+      font-weight: bold;
     }
 
     form {
@@ -39,6 +47,10 @@
       flex-direction: column;
       gap: 10px;
       margin-bottom: 20px;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
 
     input,
@@ -64,18 +76,19 @@
 
     .filters {
       display: flex;
-      justify-content: space-between;
+      flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 20px;
+      justify-content: space-between;
     }
 
-    .filters select {
-      flex: 1;
+    .filters select,
+    .filters label {
+      flex: 1 1 48%;
     }
 
     ul {
       list-style: none;
-      padding: 0;
     }
 
     li {
@@ -83,12 +96,19 @@
       padding: 15px;
       margin-bottom: 10px;
       border-left: 5px solid #007bff;
-      border-radius: 5px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: transform 0.2s;
+    }
+
+    li:hover {
+      transform: scale(1.01);
     }
 
     li.completed {
       text-decoration: line-through;
       opacity: 0.6;
+      border-left-color: green;
     }
 
     li.overdue {
@@ -98,32 +118,54 @@
 
     .task-title {
       font-weight: bold;
+      font-size: 17px;
     }
 
     .task-time {
       font-size: 14px;
       color: #666;
+      margin-top: 5px;
     }
 
     .task-no-deadline {
-      color: #888;
+      color: #aaa;
       font-style: italic;
     }
 
     .task-category {
       font-size: 14px;
       color: #999;
+      margin-top: 5px;
     }
 
     .actions {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-top: 5px;
+      margin-top: 10px;
     }
 
     .checkbox {
       margin-right: 10px;
+    }
+
+    .btn-clear {
+      margin-top: 10px;
+      background: #dc3545;
+    }
+
+    .btn-clear:hover {
+      background: #c82333;
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: transparent;
+      border: none;
+      font-size: 1.2em;
+      cursor: pointer;
     }
 
     @media (max-width: 600px) {
@@ -138,6 +180,8 @@
   </style>
 </head>
 <body>
+  <button class="theme-toggle" title="Переключить тему" onclick="toggleTheme()">🌙</button>
+
   <div class="container">
     <h1>Планировщик задач</h1>
 
@@ -151,7 +195,6 @@
       <button type="submit">Добавить задачу</button>
     </form>
 
-    <!-- Форма фильтрации -->
     <div class="filters">
       <label>
         Статус:
@@ -172,6 +215,8 @@
     </div>
 
     <ul id="task-list"></ul>
+
+    <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
   </div>
 
   <script>
@@ -216,14 +261,14 @@
           <div class="task-title">${task.title}</div>
           <div class="task-time">
             ${task.time 
-              ? 'Дата: ' + new Date(task.time).toLocaleString() 
+              ? '📅 ' + new Date(task.time).toLocaleString() 
               : '<span class="task-no-deadline">Без дедлайна</span>'
             }
           </div>
-          <div class="task-category">Категория: ${task.category}</div>
+          <div class="task-category">📂 ${task.category}</div>
           <div class="actions">
             <label><input type="checkbox" class="checkbox" ${task.done ? "checked" : ""} /> Выполнено</label>
-            <button onclick="deleteTask(${index})">Удалить</button>
+            <button onclick="deleteTask(${index})">🗑️ Удалить</button>
           </div>
         `;
 
@@ -260,6 +305,12 @@
       renderTasks();
     }
 
+    function clearCompleted() {
+      tasks = tasks.filter(t => !t.done);
+      saveTasks();
+      renderTasks();
+    }
+
     function setReminder(index) {
       const task = tasks[index];
       const dueDate = new Date(task.time);
@@ -268,8 +319,27 @@
 
       if (timeUntilDue > 0 && timeUntilDue < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
-          alert(`Напоминание: Задача "${task.title}" скоро истекает!`);
+          showNotification(task.title);
         }, timeUntilDue - 5 * 60 * 1000); // за 5 минут
+      }
+    }
+
+    function showNotification(title) {
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "granted") {
+        new Notification("Напоминание", {
+          body: `Задача "${title}" скоро истекает!`,
+          icon: "icon-192.png"
+        });
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then(permission => {
+          if (permission === "granted") {
+            new Notification("Напоминание", {
+              body: `Задача "${title}" скоро истекает!`,
+              icon: "icon-192.png"
+            });
+          }
+        });
       }
     }
 
@@ -296,6 +366,19 @@
     // Инициализация
     loadTasks();
     renderTasks();
+
+    // Темизация
+    function toggleTheme() {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+    }
+
+    window.addEventListener("load", () => {
+      const theme = localStorage.getItem("theme");
+      if (theme === "dark") {
+        document.body.classList.add("dark");
+      }
+    });
 
     // Регистрация Service Worker
     if ("serviceWorker" in navigator) {
