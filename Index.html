@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Планировщик задач</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/task-planner/manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#007bff">
+
+  <style>
+    /* Тот же CSS, что и ранее — не повторяю ради краткости */
+    /* См. предыдущий ответ или оригинал */
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" title="Переключить тему" onclick="toggleTheme()">🌙</button>
+
+  <div class="container">
+    <h1>Планировщик задач</h1>
+
+    <form id="task-form">
+      <input type="text" id="task-title" placeholder="Название задачи" required />
+      <input type="datetime-local" id="task-time" />
+      <select id="task-category">
+        <option value="Работа">Работа</option>
+        <option value="Личное">Личное</option>
+      </select>
+      <button type="submit">Добавить задачу</button>
+    </form>
+
+    <div class="filters">
+      <label>
+        Статус:
+        <select id="filter-status">
+          <option value="all">Все</option>
+          <option value="completed">Выполненные</option>
+          <option value="active">Невыполненные</option>
+        </select>
+      </label>
+      <label>
+        Категория:
+        <select id="filter-category">
+          <option value="all">Все</option>
+          <option value="Работа">Работа</option>
+          <option value="Личное">Личное</option>
+        </select>
+      </label>
+    </div>
+
+    <ul id="task-list"></ul>
+
+    <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js "></script>
+
+  <script>
+    // Замените на ваши данные из Firebase Console
+    const firebaseConfig = {
+      apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
+      authDomain: "task-planner-f4dd7.firebaseapp.com",
+      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "task-planner-f4dd7",
+      storageBucket: "task-planner-f4dd7.firebasestorage.app",
+      messagingSenderId: "321703356517",
+      appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
+      measurementId: "G-64V5LHKLP8"
+    };
+    // Инициализация Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const tasksRef = db.ref("tasks");
+
+    // Включаем оффлайн-поддержку
+    firebase.database.enableLogging(false); // можно true для дебага
+    db.setPersistence(true); // позволяет работать офлайн
+
+    let tasks = [];
+
+    // Локальное хранилище для буферизации изменений
+    const LOCAL_STORAGE_KEY = "offline_tasks";
+
+    function getOfflineTasks() {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    }
+
+    function saveOfflineTasks(data) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function mergeOfflineAndCloudTasks(cloudTasks) {
+      const offlineTasks = getOfflineTasks();
+
+      // Объединяем и удаляем дубликаты по ID
+      const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
+        if (!acc.find(t => t.id === task.id)) acc.push(task);
+        return acc;
+      }, []);
+
+      tasks = merged;
+      saveTasksToCloud(); // пытаемся отправить все накопленные офлайн-задачи
+      clearOfflineTasks(); // очищаем буфер
+    }
+
+    function saveTasksToCloud() {
+      if (navigator.onLine) {
+        const tasksMap = {};
+        tasks.forEach(task => {
+          tasksMap[task.id] = task;
+        });
+        tasksRef.set(tasksMap).catch(err => {
+          console.warn("Ошибка синхронизации:", err);
+          saveOfflineTasks(tasks); // Сохраняем в локал, если не получилось
+        });
+      } else {
+        saveOfflineTasks(tasks);
+      }
+    }
+
+    function loadTasksFromCloud() {
+      tasksRef.on("value", snapshot => {
+        const data = snapshot.val();
+        const cloudTasks = data ? Object.values(data) : [];
+
+        mergeOfflineAndCloudTasks(cloudTasks);
+        renderTasks();
+      });
+    }
+
+    function addTask(title, time, category) {
+      const newTask = {
+        id: generateUniqueId(),
+        title,
+        time: time || null,
+        category,
+        done: false
+      };
+      tasks.push(newTask);
+      saveTasksToCloud();
+      setReminder(tasks.length - 1);
+    }
+
+    function deleteTask(index) {
+      const id = tasks[index].id;
+      tasks.splice(index, 1);
+      if (navigator.onLine) {
+        db.ref(`tasks/${id}`).remove();
+      } else {
+        saveOfflineTasks(tasks);
+      }
+    }
+
+    function toggleDone(index) {
+      tasks[index].done = !tasks[index].done;
+      if (navigator.onLine) {
+        db.ref(`tasks/${tasks[index].id}`).set(tasks[index]);
+      } else {
+        saveOfflineTasks(tasks);
+      }
+    }
+
+    function clearCompleted() {
+      tasks = tasks.filter(t => !t.done);
+      if (navigator.onLine) {
+        saveTasksToCloud();
+      } else {
+        saveOfflineTasks(tasks);
+      }
+    }
+
+    function clearOfflineTasks() {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+
+    function generateUniqueId() {
+      return Math.random().toString(36).substring(2, 10);
+    }
+
+    function setReminder(index) {
+      const task = tasks[index];
+      if (!task.time) return;
+
+      const dueDate = new Date(task.time);
+      const now = new Date();
+      const timeUntilDue = dueDate.getTime() - now.getTime();
+
+      if (timeUntilDue > 0 && timeUntilDue < 24 * 60 * 60 * 1000) {
+        setTimeout(() => {
+          showNotification(task.title);
+        }, timeUntilDue - 5 * 60 * 1000); // за 5 минут
+      }
+    }
+
+    function showNotification(title) {
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "granted") {
+        new Notification("Напоминание", {
+          body: `Задача "${title}" скоро истекает!`,
+          icon: "icon-192.png"
+        });
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then(permission => {
+          if (permission === "granted") {
+            new Notification("Напоминание", {
+              body: `Задача "${title}" скоро истекает!`,
+              icon: "icon-192.png"
+            });
+          }
+        });
+      }
+    }
+
+    function renderTasks() {
+      const statusFilter = document.getElementById("filter-status").value;
+      const categoryFilter = document.getElementById("filter-category").value;
+
+      const filteredTasks = tasks.filter(task => {
+        let matchStatus = true;
+        if (statusFilter === "completed") matchStatus = task.done;
+        if (statusFilter === "active") matchStatus = !task.done;
+
+        let matchCategory = true;
+        if (categoryFilter !== "all") matchCategory = task.category === categoryFilter;
+
+        return matchStatus && matchCategory;
+      });
+
+      const taskList = document.getElementById("task-list");
+      taskList.innerHTML = "";
+      filteredTasks.forEach((task, index) => {
+        const now = new Date();
+        const isOverdue = task.time && !task.done && new Date(task.time) < now;
+
+        const li = document.createElement("li");
+        li.className = task.done ? "completed" : isOverdue ? "overdue" : "";
+
+        li.innerHTML = `
+          <div class="task-title">${task.title}</div>
+          <div class="task-time">
+            ${task.time 
+              ? '📅 ' + new Date(task.time).toLocaleString() 
+              : '<span class="task-no-deadline">Без дедлайна</span>'
+            }
+          </div>
+          <div class="task-category">📂 ${task.category}</div>
+          <div class="actions">
+            <label><input type="checkbox" class="checkbox" ${task.done ? "checked" : ""} /> Выполнено</label>
+            <button onclick="deleteTask(${index})">🗑️ Удалить</button>
+          </div>
+        `;
+
+        li.querySelector(".checkbox").addEventListener("change", () => {
+          toggleDone(index);
+        });
+
+        taskList.appendChild(li);
+      });
+    }
+
+    const taskForm = document.getElementById("task-form");
+    taskForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const titleInput = document.getElementById("task-title");
+      const timeInput = document.getElementById("task-time");
+      const categoryInput = document.getElementById("task-category");
+
+      const title = titleInput.value.trim();
+      const time = timeInput.value ? new Date(timeInput.value).toISOString() : null;
+      const category = categoryInput.value;
+
+      if (!title) return;
+
+      addTask(title, time, category);
+
+      titleInput.value = "";
+      timeInput.value = "";
+    });
+
+    setInterval(renderTasks, 60000); // раз в минуту
+
+    // Темизация
+    function toggleTheme() {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+    }
+
+    window.addEventListener("load", () => {
+      const theme = localStorage.getItem("theme");
+      if (theme === "dark") {
+        document.body.classList.add("dark");
+      }
+    });
+
+    // Проверка подключения
+    window.addEventListener("online", () => {
+      console.log("Сеть восстановлена. Синхронизируемся...");
+      saveTasksToCloud();
+      loadTasksFromCloud();
+    });
+
+    // Регистрация Service Worker
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/task-planner/sw.js").then(registration => {
+          console.log("Service Worker зарегистрирован:", registration);
+        }).catch(error => {
+          console.log("Ошибка регистрации Service Worker:", error);
+        });
+      });
+    }
+
+    // Подключаем фильтры
+    document.getElementById("filter-status").addEventListener("change", renderTasks);
+    document.getElementById("filter-category").addEventListener("change", renderTasks);
+
+    // Инициализация
+    loadTasksFromCloud();
+  </script>
+</body>
+</html>
