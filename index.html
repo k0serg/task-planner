@@ -15,7 +15,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js "></script>
 
   <style>
-    /* Твой CSS без изменений */
     * {
       box-sizing: border-box;
       font-family: 'Segoe UI', sans-serif;
@@ -225,7 +224,8 @@
   </div>
 
   <script>
-    // 🔑 Замени это на свой конфиг из Firebase Console
+    // ⚠️ Замените на ваш Firebase конфиг из Firebase Console
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
   authDomain: "task-planner-f4dd7.firebaseapp.com",
@@ -246,7 +246,6 @@ const firebaseConfig = {
 
     let tasks = [];
 
-    // Получаем уникальный ID пользователя
     function getUserId() {
       let id = localStorage.getItem("userId");
       if (!id) {
@@ -267,7 +266,7 @@ const firebaseConfig = {
         const serverTasks = snapshot.val();
         if (serverTasks) {
           tasks = serverTasks;
-          localStorage.setItem("tasks", JSON.stringify(tasks)); // локальное хранилище
+          localStorage.setItem("tasks", JSON.stringify(tasks));
           renderTasks();
         }
       });
@@ -276,8 +275,8 @@ const firebaseConfig = {
     function saveTasksToFirebase() {
       const userId = getUserId();
       database.ref('users/' + userId).set(tasks)
-        .then(() => console.log("Задачи синхронизированы"))
-        .catch(err => console.error("Ошибка Firebase:", err));
+        .then(() => console.log("Задачи отправлены на сервер"))
+        .catch(err => console.error("Ошибка сохранения:", err));
     }
 
     function renderTasks() {
@@ -370,7 +369,7 @@ const firebaseConfig = {
       }
     }
 
-    function showNotification(title) {
+    async function showNotification(title) {
       if (!("Notification" in window)) return;
       if (Notification.permission === "granted") {
         new Notification("Напоминание", {
@@ -378,14 +377,13 @@ const firebaseConfig = {
           icon: "icon-192.png"
         });
       } else if (Notification.permission !== "denied") {
-        Notification.requestPermission().then(permission => {
-          if (permission === "granted") {
-            new Notification("Напоминание", {
-              body: `Задача "${title}" скоро истекает!`,
-              icon: "icon-192.png"
-            });
-          }
-        });
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+          new Notification("Напоминание", {
+            body: `Задача "${title}" скоро истекает!`,
+            icon: "icon-192.png"
+          });
+        }
       }
     }
 
