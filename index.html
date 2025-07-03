@@ -10,7 +10,12 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js "></script>
+
   <style>
+    /* Твой CSS без изменений */
     * {
       box-sizing: border-box;
       font-family: 'Segoe UI', sans-serif;
@@ -187,7 +192,7 @@
 
     <form id="task-form">
       <input type="text" id="task-title" placeholder="Название задачи" required />
-      <input type="datetime-local" id="task-time" /> <!-- Необязательное поле -->
+      <input type="datetime-local" id="task-time" />
       <select id="task-category">
         <option value="Работа">Работа</option>
         <option value="Личное">Личное</option>
@@ -220,18 +225,59 @@
   </div>
 
   <script>
+    // 🔑 Замени это на свой конфиг из Firebase Console
+const firebaseConfig = {
+  apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
+  authDomain: "task-planner-f4dd7.firebaseapp.com",
+  databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "task-planner-f4dd7",
+  storageBucket: "task-planner-f4dd7.firebasestorage.app",
+  messagingSenderId: "321703356517",
+  appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
+  measurementId: "G-64V5LHKLP8"
+};
+
+    // Инициализация Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
     const taskForm = document.getElementById("task-form");
     const taskList = document.getElementById("task-list");
 
     let tasks = [];
 
-    function saveTasks() {
-      localStorage.setItem("tasks", JSON.stringify(tasks));
+    // Получаем уникальный ID пользователя
+    function getUserId() {
+      let id = localStorage.getItem("userId");
+      if (!id) {
+        id = Math.random().toString(36).substring(2, 10);
+        localStorage.setItem("userId", id);
+      }
+      return id;
     }
 
-    function loadTasks() {
-      const saved = localStorage.getItem("tasks");
-      if (saved) tasks = JSON.parse(saved);
+    function saveTasks() {
+      localStorage.setItem("tasks", JSON.stringify(tasks));
+      saveTasksToFirebase();
+    }
+
+    function loadTasksFromFirebase() {
+      const userId = getUserId();
+      database.ref('users/' + userId).on('value', snapshot => {
+        const serverTasks = snapshot.val();
+        if (serverTasks) {
+          tasks = serverTasks;
+          localStorage.setItem("tasks", JSON.stringify(tasks)); // локальное хранилище
+          renderTasks();
+        }
+      });
+    }
+
+    function saveTasksToFirebase() {
+      const userId = getUserId();
+      database.ref('users/' + userId).set(tasks)
+        .then(() => console.log("Задачи синхронизированы"))
+        .catch(err => console.error("Ошибка Firebase:", err));
     }
 
     function renderTasks() {
@@ -364,8 +410,10 @@
     setInterval(renderTasks, 60000); // раз в минуту
 
     // Инициализация
-    loadTasks();
-    renderTasks();
+    const saved = localStorage.getItem("tasks");
+    if (saved) tasks = JSON.parse(saved);
+
+    loadTasksFromFirebase(); // загружаем с Firebase
 
     // Темизация
     function toggleTheme() {
@@ -389,7 +437,7 @@
           console.log("Ошибка регистрации Service Worker:", error);
         });
       });
-    }
+    });
 
     // Подключаем фильтры
     document.getElementById("filter-status").addEventListener("change", renderTasks);
