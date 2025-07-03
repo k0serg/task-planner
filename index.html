@@ -11,7 +11,6 @@
   <meta name="theme-color" content="#007bff">
 
   <style>
-    /* Тот же CSS, что и раньше */
     * {
       box-sizing: border-box;
       font-family: 'Segoe UI', sans-serif;
@@ -188,7 +187,7 @@
 
     <form id="task-form">
       <input type="text" id="task-title" placeholder="Название задачи" required />
-      <input type="datetime-local" id="task-time" /> <!-- Необязательное поле -->
+      <input type="datetime-local" id="task-time" />
       <select id="task-category">
         <option value="Работа">Работа</option>
         <option value="Личное">Личное</option>
@@ -225,7 +224,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js "></script>
 
   <script>
-    // Замените на ваши данные из Firebase Console
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
     const firebaseConfig = {
       apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
       authDomain: "task-planner-f4dd7.firebaseapp.com",
@@ -244,31 +243,63 @@
 
     let tasks = [];
 
+    const LOCAL_STORAGE_KEY = "offline_tasks";
+
+    function getOfflineTasks() {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    }
+
+    function saveLocalTasks(data) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function mergeOfflineAndCloudTasks(cloudTasks) {
+      const offlineTasks = getOfflineTasks();
+
+      const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
+        if (!acc.find(t => t.id === task.id)) acc.push(task);
+        return acc;
+      }, []);
+
+      tasks = merged;
+      saveLocalTasks(tasks);
+
+      if (navigator.onLine) {
+        saveTasksToCloud(); // Отправляем накопленные офлайн-задачи
+      }
+    }
+
     function saveTasksToCloud() {
-      db.ref("tasks").set(tasks);
+      if (!navigator.onLine) {
+        console.warn("Офлайн. Сохраняем в localStorage.");
+        return;
+      }
+
+      const tasksMap = {};
+      tasks.forEach(task => {
+        tasksMap[task.id] = task;
+      });
+
+      tasksRef.set(tasksMap)
+        .then(() => {
+          console.log("Задачи синхронизированы");
+          clearOfflineTasks();
+        })
+        .catch(err => {
+          console.error("Ошибка синхронизации:", err);
+          saveLocalTasks(tasks); // Сохраняем локально при ошибке
+        });
     }
 
     function loadTasksFromCloud() {
       tasksRef.on("value", snapshot => {
         const data = snapshot.val();
-        if (data) {
-          tasks = Object.values(data).map((task, index) => {
-            task.id = Object.keys(data)[index];
-            return task;
-          });
-        } else {
-          tasks = [];
-        }
+        const cloudTasks = data ? Object.values(data) : [];
+
+        mergeOfflineAndCloudTasks(cloudTasks);
         renderTasks();
       });
-    }
-
-    function updateTaskInCloud(index, updatedTask) {
-      db.ref(`tasks/${updatedTask.id}`).set(updatedTask);
-    }
-
-    function deleteTaskFromCloud(id) {
-      db.ref(`tasks/${id}`).remove();
     }
 
     function generateUniqueId() {
@@ -284,6 +315,7 @@
         done: false
       };
       tasks.push(newTask);
+      saveLocalTasks(tasks);
       saveTasksToCloud();
       setReminder(tasks.length - 1);
     }
@@ -291,17 +323,33 @@
     function deleteTask(index) {
       const id = tasks[index].id;
       tasks.splice(index, 1);
-      deleteTaskFromCloud(id);
+      saveLocalTasks(tasks);
+      if (navigator.onLine) {
+        db.ref(`tasks/${id}`).remove().catch(() => saveLocalTasks(tasks));
+      }
+      renderTasks();
     }
 
     function toggleDone(index) {
       tasks[index].done = !tasks[index].done;
-      updateTaskInCloud(index, tasks[index]);
+      saveLocalTasks(tasks);
+      if (navigator.onLine) {
+        db.ref(`tasks/${tasks[index].id}`).set(tasks[index]).catch(() => saveLocalTasks(tasks));
+      }
+      renderTasks();
     }
 
     function clearCompleted() {
       tasks = tasks.filter(t => !t.done);
-      saveTasksToCloud();
+      saveLocalTasks(tasks);
+      if (navigator.onLine) {
+        saveTasksToCloud();
+      }
+      renderTasks();
+    }
+
+    function clearOfflineTasks() {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
 
     function setReminder(index) {
@@ -406,7 +454,6 @@
 
     setInterval(renderTasks, 60000); // раз в минуту
 
-    // Темизация
     function toggleTheme() {
       document.body.classList.toggle("dark");
       localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
@@ -417,25 +464,39 @@
       if (theme === "dark") {
         document.body.classList.add("dark");
       }
+
+      const localTasks = getOfflineTasks();
+      if (localTasks.length) {
+        tasks = localTasks;
+        renderTasks();
+      } else if (navigator.onLine) {
+        loadTasksFromCloud();
+      }
     });
 
-    // Регистрация Service Worker
+    window.addEventListener("online", () => {
+      console.log("Сеть восстановлена. Синхронизация...");
+      loadTasksFromCloud();
+    });
+
+    window.addEventListener("offline", () => {
+      console.log("Работаем в оффлайн-режиме.");
+    });
+
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/task-planner/sw.js").then(registration => {
-          console.log("Service Worker зарегистрирован:", registration);
-        }).catch(error => {
-          console.log("Ошибка регистрации Service Worker:", error);
-        });
+        navigator.serviceWorker.register("/task-planner/sw.js")
+          .then(registration => {
+            console.log("Service Worker зарегистрирован:", registration);
+          })
+          .catch(error => {
+            console.log("Ошибка регистрации Service Worker:", error);
+          });
       });
     }
 
-    // Подключаем фильтры
     document.getElementById("filter-status").addEventListener("change", renderTasks);
     document.getElementById("filter-category").addEventListener("change", renderTasks);
-
-    // Инициализация
-    loadTasksFromCloud();
   </script>
 </body>
 </html>
