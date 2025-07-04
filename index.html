@@ -157,23 +157,21 @@
     import { getDatabase, ref, set, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js ';
 
     // 🔧 Замените на вашу конфигурацию Firebase
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
     const firebaseConfig = {
-      apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
-      authDomain: "task-planner-f4dd7.firebaseapp.com",
-      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "task-planner-f4dd7",
-      storageBucket: "task-planner-f4dd7.firebasestorage.app",
-      messagingSenderId: "321703356517",
-      appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
-      measurementId: "G-64V5LHKLP8"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "your-project.firebaseapp.com",
+      projectId: "your-project-id",
+      databaseURL: "https://your-project-id.firebaseio.com ",
+      storageBucket: "your-project.appspot.com",
+      messagingSenderId: "your-sender-id",
+      appId: "your-app-id"
     };
 
     // Инициализация Firebase
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
 
-    // Экспортируем для доступа в основном скрипте
+    // Экспортируем глобально
     window.firebase = { database, ref, set, onValue, remove, update };
   </script>
 </head>
@@ -305,9 +303,14 @@
       renderTasks();
 
       // Удаляем из Firebase
-      if (window.firebase) {
+      if (window.firebase && taskId) {
         const taskRef = firebase.ref(firebase.database, `tasks/${taskId}`);
-        await firebase.remove(taskRef);
+        try {
+          await firebase.remove(taskRef);
+          console.log("Задача удалена из Firebase:", taskId);
+        } catch (error) {
+          console.error("Ошибка удаления из Firebase:", error);
+        }
       }
     }
 
@@ -432,7 +435,6 @@
       localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
     }
 
-    // Функция для загрузки задач из Firebase
     function loadRemoteTasks() {
       if (!window.firebase) return;
       const tasksRef = firebase.ref(firebase.database, 'tasks');
