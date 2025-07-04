@@ -187,8 +187,8 @@
   </div>
 
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js  "></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js  "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js "></script>
   <script>
     // Конфиг Firebase
     const firebaseConfig = {
@@ -202,115 +202,53 @@
       measurementId: "G-64V5LHKLP8"
     };
 
+    // Инициализация Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const tasksRef = db.ref("tasks");
+
     let tasks = [];
 
-    const DB_NAME = "TaskPlannerDB";
-    const STORE_NAME = "offline_tasks";
+    const LOCAL_STORAGE_KEY = "offline_tasks";
 
-    let indexedDB =
-      window.indexedDB ||
-      window.mozIndexedDB ||
-      window.webkitIndexedDB ||
-      window.msIndexedDB;
-
-    let localTasksLoaded = false;
-
-    function openDatabase() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = (event) => {
-          const db = event.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME, { keyPath: "id" });
-          }
-        };
-        request.onsuccess = (event) => resolve(event.target.result);
-        request.onerror = () => reject("Ошибка открытия IndexedDB");
-      });
+    function getOfflineTasks() {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
     }
 
-    async function getOfflineTasks() {
-      const db = await openDatabase();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject([]);
-      });
-    }
-
-    async function saveLocalTasks(data) {
-      const db = await openDatabase();
-      const tx = db.transaction(STORE_NAME, "readwrite");
-      const store = tx.objectStore(STORE_NAME);
-      store.clear();
-      data.forEach(task => store.put(task));
-      return new Promise((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject();
-      });
-    }
-
-    async function clearOfflineTasks() {
-      const db = await openDatabase();
-      const tx = db.transaction(STORE_NAME, "readwrite");
-      const store = tx.objectStore(STORE_NAME);
-      store.clear();
-    }
-
-    async function getThemePreference() {
-      const db = await openDatabase();
-      const tx = db.transaction(STORE_NAME + "_meta", "readonly");
-      const store = tx.objectStore(STORE_NAME + "_meta");
-      const req = store.get("theme");
-      return new Promise((resolve) => {
-        req.onsuccess = () => resolve(req.result?.value || null);
-        req.onerror = () => resolve(null);
-      });
-    }
-
-    async function saveThemePreference(theme) {
-      const db = await openDatabase();
-      const tx = db.transaction(STORE_NAME + "_meta", "readwrite");
-      const store = tx.objectStore(STORE_NAME + "_meta");
-      const metaStore = store.put({ id: "theme", value: theme });
+    function saveLocalTasks(data) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
     }
 
     function mergeOfflineAndCloudTasks(cloudTasks) {
-      getOfflineTasks().then(offlineTasks => {
-        const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
-          if (!acc.find(t => t.id === task.id)) acc.push(task);
-          return acc;
-        }, []);
-        tasks = merged;
-        saveLocalTasks(tasks);
-        if (navigator.onLine) {
-          saveTasksToCloud(); // Отправляем накопленные офлайн-задачи
-        }
-        renderTasks();
-      }).catch(err => console.error("Ошибка чтения из IndexedDB:", err));
+      const offlineTasks = getOfflineTasks();
+      const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
+        if (!acc.find(t => t.id === task.id)) acc.push(task);
+        return acc;
+      }, []);
+      tasks = merged;
+      saveLocalTasks(tasks);
+      renderTasks();
+      if (navigator.onLine) {
+        saveTasksToCloud(); // Отправляем офлайн-задачи на сервер
+      }
     }
 
     function saveTasksToCloud() {
-      if (!navigator.onLine) {
-        console.warn("Офлайн. Сохраняем в IndexedDB.");
-        return;
-      }
+      if (!navigator.onLine) return;
+
       const tasksMap = {};
       tasks.forEach(task => {
         tasksMap[task.id] = task;
       });
+
       tasksRef.set(tasksMap)
         .then(() => {
-          console.log("Задачи синхронизированы");
+          console.log("Задачи успешно синхронизированы");
           clearOfflineTasks();
         })
         .catch(err => {
-          console.error("Ошибка синхронизации:", err);
+          console.error("Ошибка синхронизации с Firebase:", err);
           saveLocalTasks(tasks); // Сохраняем локально при ошибке
         });
     }
@@ -320,7 +258,6 @@
         const data = snapshot.val();
         const cloudTasks = data ? Object.values(data) : [];
         mergeOfflineAndCloudTasks(cloudTasks);
-        renderTasks();
       });
     }
 
@@ -338,7 +275,9 @@
       };
       tasks.push(newTask);
       saveLocalTasks(tasks);
-      saveTasksToCloud();
+      if (navigator.onLine) {
+        saveTasksToCloud();
+      }
       setReminder(tasks.length - 1);
       renderTasks();
     }
@@ -369,6 +308,10 @@
         saveTasksToCloud();
       }
       renderTasks();
+    }
+
+    function clearOfflineTasks() {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
 
     function setReminder(index) {
@@ -461,22 +404,21 @@
 
     function toggleTheme() {
       document.body.classList.toggle("dark");
-      const isDark = document.body.classList.contains("dark");
-      saveThemePreference(isDark ? "dark" : "light");
+      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
     }
 
-    window.addEventListener("load", async () => {
-      const theme = await getThemePreference();
+    window.addEventListener("load", () => {
+      const theme = localStorage.getItem("theme");
       if (theme === "dark") {
         document.body.classList.add("dark");
       }
-      const localTasks = await getOfflineTasks();
+      const localTasks = getOfflineTasks();
       if (localTasks.length) {
         tasks = localTasks;
+        renderTasks();
       } else if (navigator.onLine) {
         loadTasksFromCloud();
       }
-      renderTasks();
     });
 
     window.addEventListener("online", () => {
