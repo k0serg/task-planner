@@ -9,33 +9,146 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
   <style>
-    /* Здесь ваш CSS как в оригинале */
-    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
-    body { background: #f4f6f8; color: #333; transition: background 0.3s, color 0.3s; }
-    body.dark { background: #1e1e1e; color: #eee; }
-    .container { max-width: 600px; margin: auto; padding: 20px; }
-    h1 { text-align: center; font-size: 24px; margin-bottom: 20px; font-weight: bold; }
-    form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    input, select, button { padding: 10px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; }
-    button { background-color: #007bff; color: white; border: none; cursor: pointer; transition: background 0.3s; }
-    button:hover { background-color: #0056b3; }
-    .filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; justify-content: space-between; }
-    .filters select, .filters label { flex: 1 1 48%; }
-    ul { list-style: none; }
-    li { background: white; padding: 15px; margin-bottom: 10px; border-left: 5px solid #007bff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.2s; }
-    li:hover { transform: scale(1.01); }
-    li.completed { text-decoration: line-through; opacity: 0.6; border-left-color: green; }
-    li.overdue { border-left-color: red; background-color: #ffe6e6; }
-    .task-title { font-weight: bold; font-size: 17px; }
-    .task-time { font-size: 14px; color: #666; margin-top: 5px; }
-    .task-no-deadline { color: #aaa; font-style: italic; }
-    .task-category { font-size: 14px; color: #999; margin-top: 5px; }
-    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
-    .checkbox { margin-right: 10px; }
-    .btn-clear { margin-top: 10px; background: #dc3545; }
-    .btn-clear:hover { background: #c82333; }
-    .theme-toggle { position: absolute; top: 10px; right: 10px; background: transparent; border: none; font-size: 1.2em; cursor: pointer; }
-    @media (max-width: 600px) { .container { padding: 10px; } h1 { font-size: 20px; } }
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #f4f6f8;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark {
+      background: #1e1e1e;
+      color: #eee;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    input,
+    select,
+    button {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      justify-content: space-between;
+    }
+    .filters select,
+    .filters label {
+      flex: 1 1 48%;
+    }
+    ul {
+      list-style: none;
+    }
+    li {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-left: 5px solid #007bff;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: transform 0.2s;
+    }
+    li:hover {
+      transform: scale(1.01);
+    }
+    li.completed {
+      text-decoration: line-through;
+      opacity: 0.6;
+      border-left-color: green;
+    }
+    li.overdue {
+      border-left-color: red;
+      background-color: #ffe6e6;
+    }
+    .task-title {
+      font-weight: bold;
+      font-size: 17px;
+    }
+    .task-time {
+      font-size: 14px;
+      color: #666;
+      margin-top: 5px;
+    }
+    .task-no-deadline {
+      color: #aaa;
+      font-style: italic;
+    }
+    .task-category {
+      font-size: 14px;
+      color: #999;
+      margin-top: 5px;
+    }
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .checkbox {
+      margin-right: 10px;
+    }
+    .btn-clear {
+      margin-top: 10px;
+      background: #dc3545;
+    }
+    .btn-clear:hover {
+      background: #c82333;
+    }
+    .theme-toggle {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: transparent;
+      border: none;
+      font-size: 1.2em;
+      cursor: pointer;
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+      h1 {
+        font-size: 20px;
+      }
+    }
   </style>
 
   <!-- Firebase SDK -->
@@ -44,7 +157,7 @@
     import { getDatabase, ref, set, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js ';
 
     // 🔧 Замените на вашу конфигурацию Firebase
-    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
     const firebaseConfig = {
       apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
       authDomain: "task-planner-f4dd7.firebaseapp.com",
@@ -60,7 +173,7 @@
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
 
-    // Экспортируем глобально
+    // Экспортируем для доступа в основном скрипте
     window.firebase = { database, ref, set, onValue, remove, update };
   </script>
 </head>
@@ -178,6 +291,7 @@
       setReminder(tasks.length - 1);
       renderTasks();
 
+      // Отправляем в Firebase
       if (window.firebase) {
         const taskRef = firebase.ref(firebase.database, `tasks/${newTask.id}`);
         await firebase.set(taskRef, newTask);
@@ -190,10 +304,10 @@
       await saveLocalTasks(tasks);
       renderTasks();
 
-      if (window.firebase && taskId) {
+      // Удаляем из Firebase
+      if (window.firebase) {
         const taskRef = firebase.ref(firebase.database, `tasks/${taskId}`);
         await firebase.remove(taskRef);
-        console.log("Задача удалена из Firebase:", taskId);
       }
     }
 
@@ -202,6 +316,7 @@
       await saveLocalTasks(tasks);
       renderTasks();
 
+      // Обновляем в Firebase
       if (window.firebase) {
         const taskId = tasks[index].id;
         const taskRef = firebase.ref(firebase.database, `tasks/${taskId}`);
@@ -215,6 +330,7 @@
       await saveLocalTasks(tasks);
       renderTasks();
 
+      // Удаляем из Firebase
       if (window.firebase) {
         for (const id of completedIds) {
           const taskRef = firebase.ref(firebase.database, `tasks/${id}`);
@@ -316,6 +432,7 @@
       localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
     }
 
+    // Функция для загрузки задач из Firebase
     function loadRemoteTasks() {
       if (!window.firebase) return;
       const tasksRef = firebase.ref(firebase.database, 'tasks');
