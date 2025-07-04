@@ -9,8 +9,146 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
   <style>
-    /* CSS как в оригинале — убран для краткости */
-    /* Вставьте свой стиль из предыдущего файла или используйте ваш */
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #f4f6f8;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark {
+      background: #1e1e1e;
+      color: #eee;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    input,
+    select,
+    button {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      justify-content: space-between;
+    }
+    .filters select,
+    .filters label {
+      flex: 1 1 48%;
+    }
+    ul {
+      list-style: none;
+    }
+    li {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-left: 5px solid #007bff;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: transform 0.2s;
+    }
+    li:hover {
+      transform: scale(1.01);
+    }
+    li.completed {
+      text-decoration: line-through;
+      opacity: 0.6;
+      border-left-color: green;
+    }
+    li.overdue {
+      border-left-color: red;
+      background-color: #ffe6e6;
+    }
+    .task-title {
+      font-weight: bold;
+      font-size: 17px;
+    }
+    .task-time {
+      font-size: 14px;
+      color: #666;
+      margin-top: 5px;
+    }
+    .task-no-deadline {
+      color: #aaa;
+      font-style: italic;
+    }
+    .task-category {
+      font-size: 14px;
+      color: #999;
+      margin-top: 5px;
+    }
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .checkbox {
+      margin-right: 10px;
+    }
+    .btn-clear {
+      margin-top: 10px;
+      background: #dc3545;
+    }
+    .btn-clear:hover {
+      background: #c82333;
+    }
+    .theme-toggle {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: transparent;
+      border: none;
+      font-size: 1.2em;
+      cursor: pointer;
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+      h1 {
+        font-size: 20px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -49,10 +187,78 @@
   </div>
 
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js "></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js  "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js  "></script>
   <script>
-    // Firebase config
+    // === IndexedDB Setup ===
+    const DB_NAME = "TaskPlannerDB";
+    const STORE_NAME = "offline_tasks";
+    let db;
+
+    function openDatabase() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = function(event) {
+          db = event.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: "id" });
+          }
+        };
+        request.onsuccess = function(event) {
+          db = event.target.result;
+          resolve();
+        };
+        request.onerror = function(event) {
+          console.error("Ошибка открытия IndexedDB");
+          reject("Не удалось открыть базу данных");
+        };
+      });
+    }
+
+    function getOfflineTasks() {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], "readonly");
+        const store = transaction.objectStore(STORE_NAME);
+        const tasks = [];
+        const cursorRequest = store.openCursor();
+        cursorRequest.onsuccess = function(event) {
+          const cursor = event.target.result;
+          if (cursor) {
+            tasks.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve(tasks);
+          }
+        };
+        cursorRequest.onerror = () => reject([]);
+      });
+    }
+
+    function saveLocalTasks(data) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        store.clear();
+        data.forEach(task => store.put(task));
+        transaction.oncomplete = resolve;
+        transaction.onerror = reject;
+      });
+    }
+
+    function clearOfflineTasks() {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        store.clear();
+        transaction.oncomplete = resolve;
+        transaction.onerror = reject;
+      });
+    }
+
+    // Инициализация IndexedDB
+    openDatabase().catch(err => console.warn("IndexedDB не доступен:", err));
+
+    // Firebase конфиг
     const firebaseConfig = {
       apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
       authDomain: "task-planner-f4dd7.firebaseapp.com",
@@ -63,94 +269,49 @@
       appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
       measurementId: "G-64V5LHKLP8"
     };
+
+    // Инициализация Firebase
     firebase.initializeApp(firebaseConfig);
     const dbFirebase = firebase.database();
     const tasksRef = dbFirebase.ref("tasks");
+
     let tasks = [];
 
-    // === Работа с IndexedDB ===
-    let indexedDBInstance;
-
-    function openDatabase() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open("TaskPlannerDB", 1);
-
-        request.onupgradeneeded = event => {
-          const db = event.target.result;
-          if (!db.objectStoreNames.contains("tasks")) {
-            db.createObjectStore("tasks", { keyPath: "id" });
-          }
-        };
-
-        request.onsuccess = event => {
-          indexedDBInstance = event.target.result;
-          resolve();
-        };
-
-        request.onerror = () => reject("Ошибка открытия IndexedDB");
-      });
-    }
-
-    function getOfflineTasks() {
-      return new Promise((resolve, reject) => {
-        const transaction = indexedDBInstance.transaction(["tasks"], "readonly");
-        const store = transaction.objectStore("tasks");
-        const getAllRequest = store.getAll();
-
-        getAllRequest.onsuccess = () => resolve(getAllRequest.result || []);
-        getAllRequest.onerror = () => reject([]);
-      });
-    }
-
-    function saveLocalTasks(data) {
-      return new Promise((resolve, reject) => {
-        const transaction = indexedDBInstance.transaction(["tasks"], "readwrite");
-        const store = transaction.objectStore("tasks");
-
-        store.clear(); // Очищаем перед записью новых данных
-
-        data.forEach(task => {
-          store.put(task);
-        });
-
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject();
-      });
-    }
-
-    function clearOfflineTasks() {
-      const transaction = indexedDBInstance.transaction(["tasks"], "readwrite");
-      const store = transaction.objectStore("tasks");
-      store.clear();
-    }
-
     async function mergeOfflineAndCloudTasks(cloudTasks) {
-      const offlineTasks = await getOfflineTasks();
-      const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
-        if (!acc.find(t => t.id === task.id)) acc.push(task);
-        return acc;
-      }, []);
-      tasks = merged;
-      await saveLocalTasks(tasks);
-      if (navigator.onLine) {
-        saveTasksToCloud();
+      try {
+        const offlineTasks = await getOfflineTasks();
+        const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
+          if (!acc.find(t => t.id === task.id)) acc.push(task);
+          return acc;
+        }, []);
+        tasks = merged;
+        if (navigator.onLine) {
+          await saveTasksToCloud(); // Отправляем накопленные офлайн-задачи
+        }
+        renderTasks();
+      } catch (err) {
+        console.error("Ошибка объединения задач", err);
       }
     }
 
-    function saveTasksToCloud() {
-      if (!navigator.onLine) return;
-
+    async function saveTasksToCloud() {
+      if (!navigator.onLine) {
+        console.warn("Офлайн. Сохраняем в IndexedDB.");
+        await saveLocalTasks(tasks);
+        return;
+      }
       const tasksMap = {};
       tasks.forEach(task => {
         tasksMap[task.id] = task;
       });
-
-      tasksRef.set(tasksMap)
-        .then(() => clearOfflineTasks())
-        .catch(err => {
-          console.error("Ошибка синхронизации:", err);
-          saveLocalTasks(tasks);
-        });
+      try {
+        await tasksRef.set(tasksMap);
+        await clearOfflineTasks();
+        console.log("Задачи синхронизированы");
+      } catch (err) {
+        console.error("Ошибка синхронизации:", err);
+        await saveLocalTasks(tasks); // Сохраняем локально при ошибке
+      }
     }
 
     function generateUniqueId() {
@@ -190,11 +351,11 @@
       renderTasks();
     }
 
-    function clearCompleted() {
+    async function clearCompleted() {
       tasks = tasks.filter(t => !t.done);
       saveLocalTasks(tasks);
       if (navigator.onLine) {
-        saveTasksToCloud();
+        await saveTasksToCloud();
       }
       renderTasks();
     }
@@ -293,41 +454,36 @@
     }
 
     window.addEventListener("load", async () => {
-      await openDatabase();
       const theme = localStorage.getItem("theme");
       if (theme === "dark") {
         document.body.classList.add("dark");
       }
-      const localTasks = await getOfflineTasks();
-      if (localTasks.length) {
-        tasks = localTasks;
+
+      try {
+        await openDatabase();
+        const localTasks = await getOfflineTasks();
+        if (localTasks.length) {
+          tasks = localTasks;
+        } else if (navigator.onLine) {
+          loadTasksFromCloud();
+        }
         renderTasks();
-      } else if (navigator.onLine) {
-        loadTasksFromCloud();
+      } catch (err) {
+        console.error("Ошибка загрузки задач из IndexedDB", err);
       }
     });
 
     function loadTasksFromCloud() {
-      tasksRef.on("value", async (snapshot) => {
+      tasksRef.on("value", snapshot => {
         const data = snapshot.val();
         const cloudTasks = data ? Object.values(data) : [];
-        await mergeOfflineAndCloudTasks(cloudTasks);
-        renderTasks();
+        mergeOfflineAndCloudTasks(cloudTasks);
       });
     }
 
-    window.addEventListener("online", async () => {
+    window.addEventListener("online", () => {
       console.log("Сеть восстановлена. Синхронизация...");
-      try {
-        const snapshot = await new Promise((resolve, reject) => {
-          tasksRef.once("value", resolve, reject);
-        });
-        const cloudTasks = snapshot.val() ? Object.values(snapshot.val()) : [];
-        await mergeOfflineAndCloudTasks(cloudTasks);
-        renderTasks();
-      } catch (err) {
-        console.error("Ошибка повторного подключения:", err);
-      }
+      loadTasksFromCloud();
     });
 
     window.addEventListener("offline", () => {
