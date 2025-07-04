@@ -8,13 +8,7 @@
   <link rel="manifest" href="/task-planner/manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
-
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js "></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-firestore-compat.js "></script>
-
   <style>
-    /* Твои оригинальные стили — не менялись */
     * {
       box-sizing: border-box;
       font-family: 'Segoe UI', sans-serif;
@@ -69,6 +63,20 @@
     button:hover {
       background-color: #0056b3;
     }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      justify-content: space-between;
+    }
+    .filters select,
+    .filters label {
+      flex: 1 1 48%;
+    }
+    ul {
+      list-style: none;
+    }
     li {
       background: white;
       padding: 15px;
@@ -76,6 +84,10 @@
       border-left: 5px solid #007bff;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: transform 0.2s;
+    }
+    li:hover {
+      transform: scale(1.01);
     }
     li.completed {
       text-decoration: line-through;
@@ -85,6 +97,24 @@
     li.overdue {
       border-left-color: red;
       background-color: #ffe6e6;
+    }
+    .task-title {
+      font-weight: bold;
+      font-size: 17px;
+    }
+    .task-time {
+      font-size: 14px;
+      color: #666;
+      margin-top: 5px;
+    }
+    .task-no-deadline {
+      color: #aaa;
+      font-style: italic;
+    }
+    .task-category {
+      font-size: 14px;
+      color: #999;
+      margin-top: 5px;
     }
     .actions {
       display: flex;
@@ -111,7 +141,41 @@
       font-size: 1.2em;
       cursor: pointer;
     }
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+      h1 {
+        font-size: 20px;
+      }
+    }
   </style>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js ';
+    import { getDatabase, ref, set, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js ';
+
+    // 🔧 Замените на вашу конфигурацию Firebase
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+    const firebaseConfig = {
+      apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
+      authDomain: "task-planner-f4dd7.firebaseapp.com",
+      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "task-planner-f4dd7",
+      storageBucket: "task-planner-f4dd7.firebasestorage.app",
+      messagingSenderId: "321703356517",
+      appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
+      measurementId: "G-64V5LHKLP8"
+    };
+
+    // Инициализация Firebase
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+
+    // Экспортируем для доступа в основном скрипте
+    window.firebase = { database, ref, set, onValue, remove, update };
+  </script>
 </head>
 <body>
   <button class="theme-toggle" title="Переключить тему" onclick="toggleTheme()">🌙</button>
@@ -149,43 +213,22 @@
   </div>
 
   <script>
-    // === Firebase Конфиг ===
-    const firebaseConfig = {
-      apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
-      authDomain: "task-planner-f4dd7.firebaseapp.com",
-      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "task-planner-f4dd7",
-      storageBucket: "task-planner-f4dd7.firebasestorage.app",
-      messagingSenderId: "321703356517",
-      appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
-      measurementId: "G-64V5LHKLP8"
-    };
-    // Инициализация Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    const tasksCollection = db.collection("tasks");
-
-    // === IndexedDB ===
     const DB_NAME = "TaskPlannerDB";
     const STORE_NAME = "tasks";
-    let indexedDBInstance;
-
+    let db;
     function openDatabase() {
       return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, 1);
-
         request.onupgradeneeded = function(event) {
           const db = event.target.result;
           if (!db.objectStoreNames.contains(STORE_NAME)) {
             db.createObjectStore(STORE_NAME, { keyPath: "id" });
           }
         };
-
         request.onsuccess = function(event) {
-          indexedDBInstance = event.target.result;
+          db = event.target.result;
           resolve();
         };
-
         request.onerror = function(event) {
           console.error("Ошибка открытия IndexedDB");
           reject("Не удалось открыть IndexedDB");
@@ -195,14 +238,12 @@
 
     function getOfflineTasks() {
       return new Promise((resolve, reject) => {
-        const transaction = indexedDBInstance.transaction([STORE_NAME], "readonly");
+        const transaction = db.transaction([STORE_NAME], "readonly");
         const store = transaction.objectStore(STORE_NAME);
         const getAllRequest = store.getAll();
-
         getAllRequest.onsuccess = function(event) {
           resolve(event.target.result || []);
         };
-
         getAllRequest.onerror = function(event) {
           reject("Ошибка получения данных");
         };
@@ -211,70 +252,28 @@
 
     function saveLocalTasks(data) {
       return new Promise((resolve, reject) => {
-        const transaction = indexedDBInstance.transaction([STORE_NAME], "readwrite");
+        const transaction = db.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
-
         const clearRequest = store.clear();
         clearRequest.onsuccess = () => {
           data.forEach(task => store.add(task));
         };
-
         transaction.oncomplete = resolve;
         transaction.onerror = reject;
       });
     }
 
-    // === Firebase Sync ===
     let tasks = [];
 
-    async function syncWithFirebase() {
-      if (!navigator.onLine) return;
-
+    async function loadTasks() {
       try {
-        const snapshot = await tasksCollection.get();
-        const serverTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        tasks = serverTasks;
-        await saveLocalTasks(tasks);
+        tasks = await getOfflineTasks();
         renderTasks();
       } catch (e) {
-        console.error("Ошибка синхронизации с Firebase", e);
+        console.error("Ошибка загрузки задач", e);
       }
     }
 
-    async function uploadChangesToFirebase() {
-      if (!navigator.onLine) return;
-
-      const localTasks = await getOfflineTasks();
-      for (const task of localTasks) {
-        await tasksCollection.doc(task.id).set({
-          title: task.title,
-          time: task.time,
-          category: task.category,
-          done: task.done
-        }, { merge: true });
-      }
-    }
-
-    function setupRealtimeListener() {
-      if (!navigator.onLine) return;
-
-      tasksCollection.onSnapshot(snapshot => {
-        snapshot.docChanges().forEach(change => {
-          const task = { id: change.doc.id, ...change.doc.data() };
-          const index = tasks.findIndex(t => t.id === task.id);
-          if (change.type === "added" || change.type === "modified") {
-            if (index > -1) tasks[index] = task;
-            else tasks.push(task);
-          } else if (change.type === "removed") {
-            if (index > -1) tasks.splice(index, 1);
-          }
-        });
-        saveLocalTasks(tasks);
-        renderTasks();
-      });
-    }
-
-    // === Основная логика ===
     function generateUniqueId() {
       return Math.random().toString(36).substring(2, 10);
     }
@@ -289,44 +288,55 @@
       };
       tasks.push(newTask);
       await saveLocalTasks(tasks);
-      if (navigator.onLine) {
-        await tasksCollection.doc(newTask.id).set(newTask);
-      }
       setReminder(tasks.length - 1);
       renderTasks();
+
+      // Отправляем в Firebase
+      if (window.firebase) {
+        const taskRef = firebase.ref(firebase.database, `tasks/${newTask.id}`);
+        await firebase.set(taskRef, newTask);
+      }
     }
 
     async function deleteTask(index) {
       const taskId = tasks[index].id;
       tasks.splice(index, 1);
       await saveLocalTasks(tasks);
-      if (navigator.onLine) {
-        await tasksCollection.doc(taskId).delete();
-      }
       renderTasks();
+
+      // Удаляем из Firebase
+      if (window.firebase) {
+        const taskRef = firebase.ref(firebase.database, `tasks/${taskId}`);
+        await firebase.remove(taskRef);
+      }
     }
 
     async function toggleDone(index) {
-      const task = tasks[index];
-      task.done = !task.done;
-      tasks[index] = task;
+      tasks[index].done = !tasks[index].done;
       await saveLocalTasks(tasks);
-      if (navigator.onLine) {
-        await tasksCollection.doc(task.id).update({ done: task.done });
-      }
       renderTasks();
+
+      // Обновляем в Firebase
+      if (window.firebase) {
+        const taskId = tasks[index].id;
+        const taskRef = firebase.ref(firebase.database, `tasks/${taskId}`);
+        await firebase.update(taskRef, { done: tasks[index].done });
+      }
     }
 
     async function clearCompleted() {
       const completedIds = tasks.filter(t => t.done).map(t => t.id);
       tasks = tasks.filter(t => !t.done);
       await saveLocalTasks(tasks);
-      if (navigator.onLine) {
+      renderTasks();
+
+      // Удаляем из Firebase
+      if (window.firebase) {
         for (const id of completedIds) {
-          await tasksCollection.doc(id).delete();
+          const taskRef = firebase.ref(firebase.database, `tasks/${id}`);
+          await firebase.remove(taskRef);
         }
       }
-      renderTasks();
     }
 
     function setReminder(index) {
@@ -400,7 +410,6 @@
       });
     }
 
-    // === Обработчики событий ===
     const taskForm = document.getElementById("task-form");
     taskForm.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -416,38 +425,40 @@
       timeInput.value = "";
     });
 
-    setInterval(async () => {
-      if (navigator.onLine) await syncWithFirebase();
-    }, 60000); // раз в минуту
+    setInterval(renderTasks, 60000); // раз в минуту
 
     function toggleTheme() {
       document.body.classList.toggle("dark");
       localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
     }
 
+    // Функция для загрузки задач из Firebase
+    function loadRemoteTasks() {
+      if (!window.firebase) return;
+      const tasksRef = firebase.ref(firebase.database, 'tasks');
+      firebase.onValue(tasksRef, (snapshot) => {
+        const remoteTasks = snapshot.val();
+        if (remoteTasks) {
+          tasks = Object.values(remoteTasks); // Преобразуем объект в массив
+          saveLocalTasks(tasks); // Сохраняем локально
+          renderTasks();
+        }
+      });
+    }
+
     window.addEventListener("load", async () => {
-      await openDatabase();
+      await openDatabase(); // Открываем IndexedDB
       const theme = localStorage.getItem("theme");
-      if (theme === "dark") document.body.classList.add("dark");
-
-      // Подгружаем локальные задачи
-      tasks = await getOfflineTasks();
-      renderTasks();
-
-      // Синхронизация с Firebase
-      if (navigator.onLine) {
-        await syncWithFirebase();
-        setupRealtimeListener();
+      if (theme === "dark") {
+        document.body.classList.add("dark");
       }
+      await loadTasks();
+      loadRemoteTasks(); // Загружаем данные из Firebase
     });
 
-    window.addEventListener("online", async () => {
+    window.addEventListener("online", () => {
       console.log("Сеть восстановлена.");
-      await syncWithFirebase();
-      await uploadChangesToFirebase();
-      setupRealtimeListener();
     });
-
     window.addEventListener("offline", () => {
       console.log("Работаем в оффлайн-режиме.");
     });
