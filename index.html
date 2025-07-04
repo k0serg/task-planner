@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
   <style>
+    /* Стили те же самые — не изменялись */
     * {
       box-sizing: border-box;
       font-family: 'Segoe UI', sans-serif;
@@ -186,125 +187,91 @@
     <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
   </div>
 
-  <!-- The core Firebase JS SDK is always required and must be listed first -->
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js "></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js "></script>
 
   <script>
-    // Initialize Firebase with your config
-    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+    // Замените на ваши данные из Firebase Console
     const firebaseConfig = {
-      apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
-      authDomain: "task-planner-f4dd7.firebaseapp.com",
-      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "task-planner-f4dd7",
-      storageBucket: "task-planner-f4dd7.firebasestorage.app",
-      messagingSenderId: "321703356517",
-      appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
-      measurementId: "G-64V5LHKLP8"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+    const dbRef = firebase.database().ref("tasks");
 
     let tasks = [];
     const DB_NAME = "TaskPlannerDB";
     const STORE_NAME = "tasks";
-    let db;
+    let indexedDBInstance;
 
     function openDatabase() {
       return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = (event) => {
-          db = event.target.result;
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = e => {
+          const db = e.target.result;
           if (!db.objectStoreNames.contains(STORE_NAME)) {
-            const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+            db.createObjectStore(STORE_NAME, { keyPath: "id" });
           }
         };
-        request.onsuccess = (event) => {
-          db = event.target.result;
-          resolve(db);
+        req.onsuccess = e => {
+          indexedDBInstance = e.target.result;
+          resolve();
         };
-        request.onerror = (event) => {
-          reject("Ошибка открытия IndexedDB");
-        };
+        req.onerror = () => reject("Ошибка открытия IndexedDB");
       });
     }
 
-    function getOfflineTasks() {
+    function getLocalTasks() {
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([STORE_NAME], "readonly");
-        const store = transaction.objectStore(STORE_NAME);
-        const getAllRequest = store.getAll();
-        getAllRequest.onsuccess = () => resolve(getAllRequest.result || []);
-        getAllRequest.onerror = () => reject([]);
+        const tx = indexedDBInstance.transaction(STORE_NAME, "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject([]);
       });
     }
 
     function saveLocalTasks(data) {
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction([STORE_NAME], "readwrite");
-        const store = transaction.objectStore(STORE_NAME);
+        const tx = indexedDBInstance.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
         store.clear();
         data.forEach(task => store.put(task));
-        transaction.oncomplete = resolve;
-        transaction.onerror = reject;
+        tx.oncomplete = resolve;
+        tx.onerror = reject;
       });
     }
 
-    function generateUniqueId() {
+    function generateId() {
       return Math.random().toString(36).substring(2, 10);
     }
 
-    function updateFirebaseTasks() {
-      if (!navigator.onLine) return; // Не отправлять, если нет подключения
-
-      const ref = database.ref('tasks');
-      ref.set(tasks)
-        .catch(error => {
-          console.error("Ошибка синхронизации с Firebase:", error);
-        });
-    }
-
-    function syncFromFirebase() {
-      if (!navigator.onLine) return;
-
-      const ref = database.ref('tasks');
-      ref.once('value')
-        .then(snapshot => {
-          const firebaseTasks = snapshot.val();
-          if (firebaseTasks) {
-            tasks = Object.values(firebaseTasks);
-            saveLocalTasks(tasks).then(renderTasks);
-          }
-        })
-        .catch(error => {
-          console.error("Ошибка получения данных из Firebase:", error);
-        });
-    }
-
     function addTask(title, time, category) {
-      const newTask = {
-        id: generateUniqueId(),
+      const task = {
+        id: generateId(),
         title,
         time: time || null,
         category,
         done: false
       };
-      tasks.push(newTask);
-      
+      tasks.push(task);
       saveLocalTasks(tasks).then(() => {
-        setReminder(tasks.length - 1);
-        updateFirebaseTasks(); // Синхронизация с Firebase
+        updateFirebase();
         renderTasks();
       });
     }
 
     function deleteTask(index) {
-      tasks.splice(index, 1);
+      const [deleted] = tasks.splice(index, 1);
       saveLocalTasks(tasks).then(() => {
-        updateFirebaseTasks(); // Синхронизация с Firebase
+        updateFirebase();
         renderTasks();
       });
     }
@@ -312,7 +279,7 @@
     function toggleDone(index) {
       tasks[index].done = !tasks[index].done;
       saveLocalTasks(tasks).then(() => {
-        updateFirebaseTasks(); // Синхронизация с Firebase
+        updateFirebase();
         renderTasks();
       });
     }
@@ -320,47 +287,33 @@
     function clearCompleted() {
       tasks = tasks.filter(t => !t.done);
       saveLocalTasks(tasks).then(() => {
-        updateFirebaseTasks(); // Синхронизация с Firebase
+        updateFirebase();
         renderTasks();
       });
     }
 
-    function setReminder(index) {
-      const task = tasks[index];
-      if (!task.time) return;
-      const dueDate = new Date(task.time);
-      const now = new Date();
-      const timeUntilDue = dueDate.getTime() - now.getTime();
-      if (timeUntilDue > 0 && timeUntilDue < 24 * 60 * 60 * 1000) {
-        setTimeout(() => {
-          showNotification(task.title);
-        }, timeUntilDue - 5 * 60 * 1000); // за 5 минут
-      }
+    function updateFirebase() {
+      if (!navigator.onLine) return;
+      const obj = {};
+      tasks.forEach(task => {
+        obj[task.id] = task;
+      });
+      dbRef.set(obj).catch(err => console.error("Ошибка отправки в Firebase", err));
     }
 
-    function showNotification(title) {
-      if (!("Notification" in window)) return;
-      if (Notification.permission === "granted") {
-        new Notification("Напоминание", {
-          body: `Задача "${title}" скоро истекает!`,
-          icon: "icon-192.png"
-        });
-      } else if (Notification.permission !== "denied") {
-        Notification.requestPermission().then(permission => {
-          if (permission === "granted") {
-            new Notification("Напоминание", {
-              body: `Задача "${title}" скоро истекает!`,
-              icon: "icon-192.png"
-            });
-          }
-        });
-      }
+    function syncFromFirebase() {
+      if (!navigator.onLine) return;
+      dbRef.on("value", snapshot => {
+        const remote = Object.values(snapshot.val() || {});
+        tasks = [...remote];
+        saveLocalTasks(tasks).then(renderTasks);
+      });
     }
 
     function renderTasks() {
       const statusFilter = document.getElementById("filter-status").value;
       const categoryFilter = document.getElementById("filter-category").value;
-      const filteredTasks = tasks.filter(task => {
+      const filtered = tasks.filter(task => {
         let matchStatus = true;
         if (statusFilter === "completed") matchStatus = task.done;
         if (statusFilter === "active") matchStatus = !task.done;
@@ -368,9 +321,10 @@
         if (categoryFilter !== "all") matchCategory = task.category === categoryFilter;
         return matchStatus && matchCategory;
       });
+
       const taskList = document.getElementById("task-list");
       taskList.innerHTML = "";
-      filteredTasks.forEach((task, index) => {
+      filtered.forEach((task, index) => {
         const now = new Date();
         const isOverdue = task.time && !task.done && new Date(task.time) < now;
         const li = document.createElement("li");
@@ -396,22 +350,17 @@
       });
     }
 
-    const taskForm = document.getElementById("task-form");
-    taskForm.addEventListener("submit", (e) => {
+    document.getElementById("task-form").addEventListener("submit", e => {
       e.preventDefault();
-      const titleInput = document.getElementById("task-title");
-      const timeInput = document.getElementById("task-time");
-      const categoryInput = document.getElementById("task-category");
-      const title = titleInput.value.trim();
-      const time = timeInput.value ? new Date(timeInput.value).toISOString() : null;
-      const category = categoryInput.value;
-      if (!title) return;
-      addTask(title, time, category);
-      titleInput.value = "";
-      timeInput.value = "";
+      const title = document.getElementById("task-title").value.trim();
+      const time = document.getElementById("task-time").value;
+      const category = document.getElementById("task-category").value;
+      if (title) {
+        addTask(title, time, category);
+        document.getElementById("task-title").value = "";
+        document.getElementById("task-time").value = "";
+      }
     });
-
-    setInterval(renderTasks, 60000); // раз в минуту
 
     function toggleTheme() {
       document.body.classList.toggle("dark");
@@ -420,38 +369,16 @@
 
     window.addEventListener("load", async () => {
       const theme = localStorage.getItem("theme");
-      if (theme === "dark") {
-        document.body.classList.add("dark");
-      }
+      if (theme === "dark") document.body.classList.add("dark");
       await openDatabase();
-      tasks = await getOfflineTasks();
-      
-      // Попытка синхронизировать с Firebase
-      syncFromFirebase();
-      
+      tasks = await getLocalTasks();
+      syncFromFirebase(); // Автосинхронизация с Firebase
       renderTasks();
     });
 
     window.addEventListener("online", () => {
-      console.log("Сеть восстановлена.");
       syncFromFirebase();
     });
-
-    window.addEventListener("offline", () => {
-      console.log("Работаем в оффлайн-режиме.");
-    });
-
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/task-planner/sw.js")
-          .then(registration => {
-            console.log("Service Worker зарегистрирован:", registration);
-          })
-          .catch(error => {
-            console.log("Ошибка регистрации Service Worker:", error);
-          });
-      });
-    }
 
     document.getElementById("filter-status").addEventListener("change", renderTasks);
     document.getElementById("filter-category").addEventListener("change", renderTasks);
