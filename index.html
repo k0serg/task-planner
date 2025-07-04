@@ -9,7 +9,6 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
   <style>
-    /* Стили те же самые — не изменялись */
     * {
       box-sizing: border-box;
       font-family: 'Segoe UI', sans-serif;
@@ -186,51 +185,54 @@
     <ul id="task-list"></ul>
     <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
   </div>
-
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js "></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js "></script>
-
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js  "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js  "></script>
   <script>
-    // Замените на ваши данные из Firebase Console
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
+      authDomain: "task-planner-f4dd7.firebaseapp.com",
+      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app ",
+      projectId: "task-planner-f4dd7",
+      storageBucket: "task-planner-f4dd7.firebasestorage.app",
+      messagingSenderId: "321703356517",
+      appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
+      measurementId: "G-64V5LHKLP8"
     };
-
+    // Инициализация Firebase
     firebase.initializeApp(firebaseConfig);
-    const dbRef = firebase.database().ref("tasks");
-
+    const db = firebase.database();
+    const tasksRef = db.ref("tasks");
     let tasks = [];
+
     const DB_NAME = "TaskPlannerDB";
-    const STORE_NAME = "tasks";
-    let indexedDBInstance;
+    const STORE_NAME = "offline_tasks";
+
+    let indexedDB =
+      window.indexedDB ||
+      window.mozIndexedDB ||
+      window.webkitIndexedDB ||
+      window.msIndexedDB;
 
     function openDatabase() {
       return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = e => {
-          const db = e.target.result;
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
           if (!db.objectStoreNames.contains(STORE_NAME)) {
             db.createObjectStore(STORE_NAME, { keyPath: "id" });
           }
         };
-        req.onsuccess = e => {
-          indexedDBInstance = e.target.result;
-          resolve();
-        };
-        req.onerror = () => reject("Ошибка открытия IndexedDB");
+        request.onsuccess = (event) => resolve(event.target.result);
+        request.onerror = (event) => reject("Ошибка открытия IndexedDB");
       });
     }
 
-    function getLocalTasks() {
+    async function getOfflineTasks() {
+      const db = await openDatabase();
       return new Promise((resolve, reject) => {
-        const tx = indexedDBInstance.transaction(STORE_NAME, "readonly");
+        const tx = db.transaction(STORE_NAME, "readonly");
         const store = tx.objectStore(STORE_NAME);
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result || []);
@@ -238,82 +240,170 @@
       });
     }
 
-    function saveLocalTasks(data) {
+    async function saveLocalTasks(data) {
+      const db = await openDatabase();
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+
+      store.clear();
+      data.forEach(task => store.put(task));
       return new Promise((resolve, reject) => {
-        const tx = indexedDBInstance.transaction(STORE_NAME, "readwrite");
-        const store = tx.objectStore(STORE_NAME);
-        store.clear();
-        data.forEach(task => store.put(task));
-        tx.oncomplete = resolve;
-        tx.onerror = reject;
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject();
       });
     }
 
-    function generateId() {
+    async function clearOfflineTasks() {
+      const db = await openDatabase();
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      store.clear();
+    }
+
+    async function getThemePreference() {
+      const db = await openDatabase();
+      const tx = db.transaction(STORE_NAME + "_meta", "readonly");
+      const store = tx.objectStore(STORE_NAME + "_meta");
+      const req = store.get("theme");
+      return new Promise((resolve) => {
+        req.onsuccess = () => resolve(req.result?.value || null);
+        req.onerror = () => resolve(null);
+      });
+    }
+
+    async function saveThemePreference(theme) {
+      const db = await openDatabase();
+      const tx = db.transaction(STORE_NAME + "_meta", "readwrite");
+      const store = tx.objectStore(STORE_NAME + "_meta");
+      store.put({ id: "theme", value: theme });
+    }
+
+    function mergeOfflineAndCloudTasks(cloudTasks) {
+      getOfflineTasks().then(offlineTasks => {
+        const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
+          if (!acc.find(t => t.id === task.id)) acc.push(task);
+          return acc;
+        }, []);
+        tasks = merged;
+        saveLocalTasks(tasks);
+        if (navigator.onLine) {
+          saveTasksToCloud(); // Отправляем накопленные офлайн-задачи
+        }
+        renderTasks();
+      }).catch(err => console.error("Ошибка чтения из IndexedDB:", err));
+    }
+
+    function saveTasksToCloud() {
+      if (!navigator.onLine) {
+        console.warn("Офлайн. Сохраняем в IndexedDB.");
+        return;
+      }
+      const tasksMap = {};
+      tasks.forEach(task => {
+        tasksMap[task.id] = task;
+      });
+      tasksRef.set(tasksMap)
+        .then(() => {
+          console.log("Задачи синхронизированы");
+          clearOfflineTasks();
+        })
+        .catch(err => {
+          console.error("Ошибка синхронизации:", err);
+          saveLocalTasks(tasks); // Сохраняем локально при ошибке
+        });
+    }
+
+    function loadTasksFromCloud() {
+      tasksRef.on("value", snapshot => {
+        const data = snapshot.val();
+        const cloudTasks = data ? Object.values(data) : [];
+        mergeOfflineAndCloudTasks(cloudTasks);
+        renderTasks();
+      });
+    }
+
+    function generateUniqueId() {
       return Math.random().toString(36).substring(2, 10);
     }
 
     function addTask(title, time, category) {
-      const task = {
-        id: generateId(),
+      const newTask = {
+        id: generateUniqueId(),
         title,
         time: time || null,
         category,
         done: false
       };
-      tasks.push(task);
-      saveLocalTasks(tasks).then(() => {
-        updateFirebase();
-        renderTasks();
-      });
+      tasks.push(newTask);
+      saveLocalTasks(tasks);
+      saveTasksToCloud();
+      setReminder(tasks.length - 1);
     }
 
     function deleteTask(index) {
-      const [deleted] = tasks.splice(index, 1);
-      saveLocalTasks(tasks).then(() => {
-        updateFirebase();
-        renderTasks();
-      });
+      const id = tasks[index].id;
+      tasks.splice(index, 1);
+      saveLocalTasks(tasks);
+      if (navigator.onLine) {
+        db.ref(`tasks/${id}`).remove().catch(() => saveLocalTasks(tasks));
+      }
+      renderTasks();
     }
 
     function toggleDone(index) {
       tasks[index].done = !tasks[index].done;
-      saveLocalTasks(tasks).then(() => {
-        updateFirebase();
-        renderTasks();
-      });
+      saveLocalTasks(tasks);
+      if (navigator.onLine) {
+        db.ref(`tasks/${tasks[index].id}`).set(tasks[index]).catch(() => saveLocalTasks(tasks));
+      }
+      renderTasks();
     }
 
     function clearCompleted() {
       tasks = tasks.filter(t => !t.done);
-      saveLocalTasks(tasks).then(() => {
-        updateFirebase();
-        renderTasks();
-      });
+      saveLocalTasks(tasks);
+      if (navigator.onLine) {
+        saveTasksToCloud();
+      }
+      renderTasks();
     }
 
-    function updateFirebase() {
-      if (!navigator.onLine) return;
-      const obj = {};
-      tasks.forEach(task => {
-        obj[task.id] = task;
-      });
-      dbRef.set(obj).catch(err => console.error("Ошибка отправки в Firebase", err));
+    function setReminder(index) {
+      const task = tasks[index];
+      if (!task.time) return;
+      const dueDate = new Date(task.time);
+      const now = new Date();
+      const timeUntilDue = dueDate.getTime() - now.getTime();
+      if (timeUntilDue > 0 && timeUntilDue < 24 * 60 * 60 * 1000) {
+        setTimeout(() => {
+          showNotification(task.title);
+        }, timeUntilDue - 5 * 60 * 1000); // за 5 минут
+      }
     }
 
-    function syncFromFirebase() {
-      if (!navigator.onLine) return;
-      dbRef.on("value", snapshot => {
-        const remote = Object.values(snapshot.val() || {});
-        tasks = [...remote];
-        saveLocalTasks(tasks).then(renderTasks);
-      });
+    function showNotification(title) {
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "granted") {
+        new Notification("Напоминание", {
+          body: `Задача "${title}" скоро истекает!`,
+          icon: "icon-192.png"
+        });
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then(permission => {
+          if (permission === "granted") {
+            new Notification("Напоминание", {
+              body: `Задача "${title}" скоро истекает!`,
+              icon: "icon-192.png"
+            });
+          }
+        });
+      }
     }
 
     function renderTasks() {
       const statusFilter = document.getElementById("filter-status").value;
       const categoryFilter = document.getElementById("filter-category").value;
-      const filtered = tasks.filter(task => {
+      const filteredTasks = tasks.filter(task => {
         let matchStatus = true;
         if (statusFilter === "completed") matchStatus = task.done;
         if (statusFilter === "active") matchStatus = !task.done;
@@ -321,10 +411,9 @@
         if (categoryFilter !== "all") matchCategory = task.category === categoryFilter;
         return matchStatus && matchCategory;
       });
-
       const taskList = document.getElementById("task-list");
       taskList.innerHTML = "";
-      filtered.forEach((task, index) => {
+      filteredTasks.forEach((task, index) => {
         const now = new Date();
         const isOverdue = task.time && !task.done && new Date(task.time) < now;
         const li = document.createElement("li");
@@ -350,35 +439,63 @@
       });
     }
 
-    document.getElementById("task-form").addEventListener("submit", e => {
+    const taskForm = document.getElementById("task-form");
+    taskForm.addEventListener("submit", (e) => {
       e.preventDefault();
-      const title = document.getElementById("task-title").value.trim();
-      const time = document.getElementById("task-time").value;
-      const category = document.getElementById("task-category").value;
-      if (title) {
-        addTask(title, time, category);
-        document.getElementById("task-title").value = "";
-        document.getElementById("task-time").value = "";
-      }
+      const titleInput = document.getElementById("task-title");
+      const timeInput = document.getElementById("task-time");
+      const categoryInput = document.getElementById("task-category");
+      const title = titleInput.value.trim();
+      const time = timeInput.value ? new Date(timeInput.value).toISOString() : null;
+      const category = categoryInput.value;
+      if (!title) return;
+      addTask(title, time, category);
+      titleInput.value = "";
+      timeInput.value = "";
     });
+
+    setInterval(renderTasks, 60000); // раз в минуту
 
     function toggleTheme() {
       document.body.classList.toggle("dark");
-      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+      const isDark = document.body.classList.contains("dark");
+      saveThemePreference(isDark ? "dark" : "light");
     }
 
     window.addEventListener("load", async () => {
-      const theme = localStorage.getItem("theme");
-      if (theme === "dark") document.body.classList.add("dark");
-      await openDatabase();
-      tasks = await getLocalTasks();
-      syncFromFirebase(); // Автосинхронизация с Firebase
+      const theme = await getThemePreference();
+      if (theme === "dark") {
+        document.body.classList.add("dark");
+      }
+      const localTasks = await getOfflineTasks();
+      if (localTasks.length) {
+        tasks = localTasks;
+      } else if (navigator.onLine) {
+        loadTasksFromCloud();
+      }
       renderTasks();
     });
 
     window.addEventListener("online", () => {
-      syncFromFirebase();
+      console.log("Сеть восстановлена. Синхронизация...");
+      loadTasksFromCloud();
     });
+
+    window.addEventListener("offline", () => {
+      console.log("Работаем в оффлайн-режиме.");
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/task-planner/sw.js")
+          .then(registration => {
+            console.log("Service Worker зарегистрирован:", registration);
+          })
+          .catch(error => {
+            console.log("Ошибка регистрации Service Worker:", error);
+          });
+      });
+    }
 
     document.getElementById("filter-status").addEventListener("change", renderTasks);
     document.getElementById("filter-category").addEventListener("change", renderTasks);
