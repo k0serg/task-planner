@@ -1,4 +1,4 @@
-const CACHE_NAME = "task-planner-cache-v3";
+const CACHE_NAME = "task-planner-cache-v4";
 const ASSETS_TO_CACHE = [
   "/task-planner/",
   "/task-planner/index.html",

@@ -233,7 +233,10 @@
     }
 
     function saveTasksToCloud() {
-      if (!navigator.onLine) return;
+      if (!navigator.onLine) {
+        console.warn("Офлайн: задачи временно сохранены локально");
+        return;
+      }
 
       const tasksMap = {};
       tasks.forEach(task => {
@@ -242,11 +245,11 @@
 
       tasksRef.set(tasksMap)
         .then(() => {
-          console.log("Задачи успешно синхронизированы");
+          console.log("Задачи успешно отправлены в Firebase");
           clearOfflineTasks();
         })
         .catch(err => {
-          console.error("Ошибка синхронизации с Firebase:", err);
+          console.error("Ошибка отправки в Firebase:", err.message);
           saveLocalTasks(tasks); // Сохраняем локально при ошибке
         });
     }
@@ -276,7 +279,7 @@
       if (navigator.onLine) {
         saveTasksToCloud();
       } else {
-        console.warn("Офлайн: задача временно сохранена локально");
+        console.warn("Офлайн: задача сохранена локально");
       }
       setReminder(tasks.length - 1);
       renderTasks();
