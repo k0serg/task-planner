@@ -8,6 +8,11 @@
   <link rel="manifest" href="/task-planner/manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="theme-color" content="#007bff">
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js "></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-firestore-compat.js "></script>
+
   <style>
     * {
       box-sizing: border-box;
@@ -186,84 +191,13 @@
     <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
   </div>
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js "></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js "></script>
   <script>
-    // Инициализация IndexedDB
-    let dbIndexedDB = null;
-
-    const request = indexedDB.open("TaskPlannerDB", 1);
-
-    request.onupgradeneeded = function(event) {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains("tasks")) {
-        db.createObjectStore("tasks", { keyPath: "id" });
-      }
-    };
-
-    request.onsuccess = function(event) {
-      dbIndexedDB = event.target.result;
-    };
-
-    request.onerror = function(event) {
-      console.error("Ошибка открытия IndexedDB:", event.target.error);
-    };
-
-    // Функции для работы с IndexedDB
-    function getOfflineTasks(callback) {
-      if (!dbIndexedDB) return callback([]);
-      const tasks = [];
-      const transaction = dbIndexedDB.transaction("tasks", "readonly");
-      const store = transaction.objectStore("tasks");
-      const cursorRequest = store.openCursor();
-
-      cursorRequest.onsuccess = function(event) {
-        const cursor = event.target.result;
-        if (cursor) {
-          tasks.push(cursor.value);
-          cursor.continue();
-        } else {
-          callback(tasks);
-        }
-      };
-
-      cursorRequest.onerror = function(event) {
-        console.error("Ошибка чтения задач из IndexedDB:", event.target.error);
-        callback([]);
-      };
-    }
-
-    function saveLocalTasks(data) {
-      if (!dbIndexedDB) return;
-      const transaction = dbIndexedDB.transaction("tasks", "readwrite");
-      const store = transaction.objectStore("tasks");
-
-      const clearRequest = store.clear();
-
-      clearRequest.onsuccess = function() {
-        data.forEach(task => {
-          store.add(task);
-        });
-      };
-
-      clearRequest.onerror = function(event) {
-        console.error("Ошибка очистки IndexedDB:", event.target.error);
-      };
-    }
-
-    function clearOfflineTasks() {
-      if (!dbIndexedDB) return;
-      const transaction = dbIndexedDB.transaction("tasks", "readwrite");
-      const store = transaction.objectStore("tasks");
-      store.clear();
-    }
-
-    // Firebase
+    // === Firebase Конфиг ===
+    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
     const firebaseConfig = {
       apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
       authDomain: "task-planner-f4dd7.firebaseapp.com",
-      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app ",
+      databaseURL: "https://task-planner-f4dd7-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "task-planner-f4dd7",
       storageBucket: "task-planner-f4dd7.firebasestorage.app",
       messagingSenderId: "321703356517",
@@ -271,16 +205,126 @@
       measurementId: "G-64V5LHKLP8"
     };
 
+    // Инициализация Firebase
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    const tasksRef = db.ref("tasks");
+    const db = firebase.firestore();
+    const tasksCollection = db.collection("tasks");
+
+    // === IndexedDB ===
+    const DB_NAME = "TaskPlannerDB";
+    const STORE_NAME = "tasks";
+    let indexedDBInstance;
+
+    function openDatabase() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+
+        request.onupgradeneeded = function(event) {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: "id" });
+          }
+        };
+
+        request.onsuccess = function(event) {
+          indexedDBInstance = event.target.result;
+          resolve();
+        };
+
+        request.onerror = function(event) {
+          console.error("Ошибка открытия IndexedDB");
+          reject("Не удалось открыть IndexedDB");
+        };
+      });
+    }
+
+    function getOfflineTasks() {
+      return new Promise((resolve, reject) => {
+        const transaction = indexedDBInstance.transaction([STORE_NAME], "readonly");
+        const store = transaction.objectStore(STORE_NAME);
+        const getAllRequest = store.getAll();
+
+        getAllRequest.onsuccess = function(event) {
+          resolve(event.target.result || []);
+        };
+
+        getAllRequest.onerror = function(event) {
+          reject("Ошибка получения данных");
+        };
+      });
+    }
+
+    function saveLocalTasks(data) {
+      return new Promise((resolve, reject) => {
+        const transaction = indexedDBInstance.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+
+        const clearRequest = store.clear();
+        clearRequest.onsuccess = () => {
+          data.forEach(task => store.add(task));
+        };
+
+        transaction.oncomplete = resolve;
+        transaction.onerror = reject;
+      });
+    }
+
+    // === Firebase Sync ===
     let tasks = [];
 
+    async function syncWithFirebase() {
+      if (!navigator.onLine) return;
+
+      try {
+        const snapshot = await tasksCollection.get();
+        const serverTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        tasks = serverTasks;
+        await saveLocalTasks(tasks);
+        renderTasks();
+      } catch (e) {
+        console.error("Ошибка синхронизации с Firebase", e);
+      }
+    }
+
+    async function uploadChangesToFirebase() {
+      if (!navigator.onLine) return;
+
+      const localTasks = await getOfflineTasks();
+      for (const task of localTasks) {
+        await tasksCollection.doc(task.id).set({
+          title: task.title,
+          time: task.time,
+          category: task.category,
+          done: task.done
+        }, { merge: true });
+      }
+    }
+
+    function setupRealtimeListener() {
+      if (!navigator.onLine) return;
+
+      tasksCollection.onSnapshot(snapshot => {
+        snapshot.docChanges().forEach(change => {
+          const task = { id: change.doc.id, ...change.doc.data() };
+          const index = tasks.findIndex(t => t.id === task.id);
+          if (change.type === "added" || change.type === "modified") {
+            if (index > -1) tasks[index] = task;
+            else tasks.push(task);
+          } else if (change.type === "removed") {
+            if (index > -1) tasks.splice(index, 1);
+          }
+        });
+        saveLocalTasks(tasks);
+        renderTasks();
+      });
+    }
+
+    // === Основная логика ===
     function generateUniqueId() {
       return Math.random().toString(36).substring(2, 10);
     }
 
-    function addTask(title, time, category) {
+    async function addTask(title, time, category) {
       const newTask = {
         id: generateUniqueId(),
         title,
@@ -288,102 +332,49 @@
         category,
         done: false
       };
-
-      if (!dbIndexedDB) {
-        console.warn("IndexedDB ещё не готов. Задача временно сохранена в памяти.");
-        tasks.push(newTask);
-        setReminder(tasks.length - 1);
-
-        const checkDB = setInterval(() => {
-          if (dbIndexedDB) {
-            clearInterval(checkDB);
-            tasks.push(newTask);
-            saveLocalTasks(tasks);
-            saveTasksToCloud();
-          }
-        }, 200);
-        return;
-      }
-
       tasks.push(newTask);
-      saveLocalTasks(tasks);
-      saveTasksToCloud();
+      await saveLocalTasks(tasks);
+      if (navigator.onLine) {
+        await tasksCollection.doc(newTask.id).set(newTask);
+      }
       setReminder(tasks.length - 1);
+      renderTasks();
     }
 
-    function deleteTask(index) {
-      const id = tasks[index].id;
+    async function deleteTask(index) {
+      const taskId = tasks[index].id;
       tasks.splice(index, 1);
-      saveLocalTasks(tasks);
+      await saveLocalTasks(tasks);
       if (navigator.onLine) {
-        db.ref(`tasks/${id}`).remove().catch(() => saveLocalTasks(tasks));
+        await tasksCollection.doc(taskId).delete();
       }
       renderTasks();
     }
 
-    function toggleDone(index) {
-      tasks[index].done = !tasks[index].done;
-      saveLocalTasks(tasks);
+    async function toggleDone(index) {
+      const task = tasks[index];
+      task.done = !task.done;
+      tasks[index] = task;
+      await saveLocalTasks(tasks);
       if (navigator.onLine) {
-        db.ref(`tasks/${tasks[index].id}`).set(tasks[index]).catch(() => saveLocalTasks(tasks));
+        await tasksCollection.doc(task.id).update({ done: task.done });
       }
       renderTasks();
     }
 
-    function clearCompleted() {
+    async function clearCompleted() {
+      const completedIds = tasks.filter(t => t.done).map(t => t.id);
       tasks = tasks.filter(t => !t.done);
-      saveLocalTasks(tasks);
+      await saveLocalTasks(tasks);
       if (navigator.onLine) {
-        saveTasksToCloud();
+        for (const id of completedIds) {
+          await tasksCollection.doc(id).delete();
+        }
       }
       renderTasks();
     }
 
-    function mergeOfflineAndCloudTasks(cloudTasks) {
-      getOfflineTasks(offlineTasks => {
-        const merged = [...cloudTasks, ...offlineTasks].reduce((acc, task) => {
-          if (!acc.find(t => t.id === task.id)) acc.push(task);
-          return acc;
-        }, []);
-        tasks = merged;
-        saveLocalTasks(tasks);
-        if (navigator.onLine) {
-          saveTasksToCloud(); // отправляем в Firebase
-        }
-        renderTasks();
-      });
-    }
-
-    function saveTasksToCloud() {
-      if (!navigator.onLine) {
-        console.warn("Офлайн. Сохраняем в IndexedDB.");
-        return;
-      }
-
-      const tasksMap = {};
-      tasks.forEach(task => {
-        tasksMap[task.id] = task;
-      });
-
-      tasksRef.set(tasksMap)
-        .then(() => {
-          console.log("Задачи синхронизированы");
-          clearOfflineTasks();
-        })
-        .catch(err => {
-          console.error("Ошибка синхронизации:", err);
-          saveLocalTasks(tasks); // Сохраняем локально при ошибке
-        });
-    }
-
-    function loadTasksFromCloud() {
-      tasksRef.on("value", snapshot => {
-        const data = snapshot.val();
-        const cloudTasks = data ? Object.values(data) : [];
-        mergeOfflineAndCloudTasks(cloudTasks);
-      });
-    }
-
+    // === Уведомления и рендеринг ===
     function setReminder(index) {
       const task = tasks[index];
       if (!task.time) return;
@@ -455,6 +446,7 @@
       });
     }
 
+    // === Обработчики событий ===
     const taskForm = document.getElementById("task-form");
     taskForm.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -470,32 +462,36 @@
       timeInput.value = "";
     });
 
-    setInterval(renderTasks, 60000); // раз в минуту
+    setInterval(async () => {
+      if (navigator.onLine) await syncWithFirebase();
+    }, 60000); // раз в минуту
 
     function toggleTheme() {
       document.body.classList.toggle("dark");
       localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
     }
 
-    window.addEventListener("load", () => {
+    window.addEventListener("load", async () => {
+      await openDatabase();
       const theme = localStorage.getItem("theme");
-      if (theme === "dark") {
-        document.body.classList.add("dark");
-      }
+      if (theme === "dark") document.body.classList.add("dark");
 
-      getOfflineTasks(localTasks => {
-        tasks = localTasks;
-        if (localTasks.length && !navigator.onLine) {
-          renderTasks();
-        } else if (navigator.onLine) {
-          loadTasksFromCloud();
-        }
-      });
+      // Подгружаем локальные задачи
+      tasks = await getOfflineTasks();
+      renderTasks();
+
+      // Синхронизация с Firebase
+      if (navigator.onLine) {
+        await syncWithFirebase();
+        setupRealtimeListener();
+      }
     });
 
-    window.addEventListener("online", () => {
-      console.log("Сеть восстановлена. Синхронизация...");
-      loadTasksFromCloud();
+    window.addEventListener("online", async () => {
+      console.log("Сеть восстановлена.");
+      await syncWithFirebase();
+      await uploadChangesToFirebase();
+      setupRealtimeListener();
     });
 
     window.addEventListener("offline", () => {
@@ -514,15 +510,8 @@
       });
     }
 
-    document.getElementById("filter-status").addEventListener("change", () => getOfflineTasks(tasks => {
-      tasks = tasks;
-      renderTasks();
-    }));
-    document.getElementById("filter-category").addEventListener("change", () => getOfflineTasks(tasks => {
-      tasks = tasks;
-      renderTasks();
-    }));
-
+    document.getElementById("filter-status").addEventListener("change", renderTasks);
+    document.getElementById("filter-category").addEventListener("change", renderTasks);
   </script>
 </body>
 </html>
