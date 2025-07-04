@@ -208,12 +208,10 @@
     const tasksRef = db.ref("tasks");
 
     let tasks = [];
-
     const LOCAL_STORAGE_KEY = "offline_tasks";
 
     function getOfflineTasks() {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
+      return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
     }
 
     function saveLocalTasks(data) {
@@ -230,7 +228,7 @@
       saveLocalTasks(tasks);
       renderTasks();
       if (navigator.onLine) {
-        saveTasksToCloud(); // Отправляем офлайн-задачи на сервер
+        saveTasksToCloud();
       }
     }
 
@@ -277,6 +275,8 @@
       saveLocalTasks(tasks);
       if (navigator.onLine) {
         saveTasksToCloud();
+      } else {
+        console.warn("Офлайн: задача временно сохранена локально");
       }
       setReminder(tasks.length - 1);
       renderTasks();
