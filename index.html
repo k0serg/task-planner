@@ -155,53 +155,43 @@
   <button class="theme-toggle" title="Переключить тему" onclick="toggleTheme()">🌙</button>
   <div class="container">
     <h1>Планировщик задач</h1>
-    <form id="login-form">
-      <input type="email" id="email" placeholder="Email" required />
-      <input type="password" id="password" placeholder="Пароль" required />
-      <button type="submit">Войти</button>
+    <form id="task-form">
+      <input type="text" id="task-title" placeholder="Название задачи" required />
+      <input type="datetime-local" id="task-time" />
+      <select id="task-category">
+        <option value="Работа">Работа</option>
+        <option value="Личное">Личное</option>
+      </select>
+      <button type="submit">Добавить задачу</button>
     </form>
-    <div id="user-panel" style="display: none;">
-      <p>Вы вошли как <span id="user-email"></span></p>
-      <form id="task-form">
-        <input type="text" id="task-title" placeholder="Название задачи" required />
-        <input type="datetime-local" id="task-time" />
-        <select id="task-category">
+    <div class="filters">
+      <label>
+        Статус:
+        <select id="filter-status">
+          <option value="all">Все</option>
+          <option value="completed">Выполненные</option>
+          <option value="active">Невыполненные</option>
+        </select>
+      </label>
+      <label>
+        Категория:
+        <select id="filter-category">
+          <option value="all">Все</option>
           <option value="Работа">Работа</option>
           <option value="Личное">Личное</option>
         </select>
-        <button type="submit">Добавить задачу</button>
-      </form>
-      <div class="filters">
-        <label>
-          Статус:
-          <select id="filter-status">
-            <option value="all">Все</option>
-            <option value="completed">Выполненные</option>
-            <option value="active">Невыполненные</option>
-          </select>
-        </label>
-        <label>
-          Категория:
-          <select id="filter-category">
-            <option value="all">Все</option>
-            <option value="Работа">Работа</option>
-            <option value="Личное">Личное</option>
-          </select>
-        </label>
-      </div>
-      <ul id="task-list"></ul>
-      <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
-      <button onclick="logout()">Выйти</button>
+      </label>
     </div>
+    <ul id="task-list"></ul>
+    <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
   </div>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js "></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js "></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js "></script>
 
   <script>
-    // Инициализация Firebase
+    // === Инициализация Firebase ===
     const firebaseConfig = {
       apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
       authDomain: "task-planner-f4dd7.firebaseapp.com",
@@ -212,13 +202,10 @@
       appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
       measurementId: "G-64V5LHKLP8"
     };
-
     firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
     const db = firebase.firestore();
 
     let tasks = [];
-    let currentUser = null;
 
     function generateUniqueId() {
       return Math.random().toString(36).substring(2, 10);
@@ -232,25 +219,22 @@
         category,
         done: false
       };
-      db.collection("users").doc(currentUser.uid).collection("tasks").add(newTask);
+      db.collection("tasks").doc(newTask.id).set(newTask);
     }
 
     function deleteTask(id) {
-      db.collection("users").doc(currentUser.uid).collection("tasks").doc(id).delete();
+      db.collection("tasks").doc(id).delete();
     }
 
     function toggleDone(task) {
       task.done = !task.done;
-      db.collection("users").doc(currentUser.uid).collection("tasks").doc(task.id).set(task);
+      db.collection("tasks").doc(task.id).set(task);
     }
 
     function clearCompleted() {
-      db.collection("users").doc(currentUser.uid).collection("tasks")
-        .where("done", "==", true)
-        .get()
-        .then(snapshot => {
-          snapshot.forEach(doc => doc.ref.delete());
-        });
+      db.collection("tasks").where("done", "==", true).get().then(snapshot => {
+        snapshot.forEach(doc => doc.ref.delete());
+      });
     }
 
     function setReminder(task) {
@@ -287,6 +271,7 @@
     function renderTasks() {
       const statusFilter = document.getElementById("filter-status").value;
       const categoryFilter = document.getElementById("filter-category").value;
+
       const filteredTasks = tasks.filter(task => {
         let matchStatus = true;
         if (statusFilter === "completed") matchStatus = task.done;
@@ -343,54 +328,32 @@
 
     function toggleTheme() {
       document.body.classList.toggle("dark");
-      db.collection("users").doc(currentUser.uid).update({
+      db.collection("settings").doc("theme").set({
         theme: document.body.classList.contains("dark") ? "dark" : "light"
       });
     }
 
     function loadTheme() {
-      db.collection("users").doc(currentUser.uid).get().then(doc => {
+      db.collection("settings").doc("theme").get().then(doc => {
         if (doc.exists && doc.data().theme === "dark") {
           document.body.classList.add("dark");
         }
       });
     }
 
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        currentUser = user;
-        document.getElementById("user-panel").style.display = "block";
-        document.getElementById("user-email").textContent = user.email;
-        document.getElementById("login-form").style.display = "none";
-
-        db.collection("users").doc(user.uid).collection("tasks").onSnapshot(snapshot => {
-          tasks = [];
-          snapshot.forEach(doc => {
-            tasks.push({ id: doc.id, ...doc.data() });
-          });
-          renderTasks();
-        });
-
-        loadTheme();
-      } else {
-        document.getElementById("user-panel").style.display = "none";
-        document.getElementById("login-form").style.display = "block";
-        document.getElementById("task-list").innerHTML = "";
-      }
+    // Подписка на изменения задач в реальном времени
+    db.collection("tasks").onSnapshot(snapshot => {
+      tasks = [];
+      snapshot.forEach(doc => {
+        tasks.push({ id: doc.id, ...doc.data() });
+      });
+      renderTasks();
     });
 
-    document.getElementById("login-form").addEventListener("submit", e => {
-      e.preventDefault();
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      auth.signInWithEmailAndPassword(email, password)
-        .catch(() => auth.createUserWithEmailAndPassword(email, password));
-    });
+    // Загрузка темы
+    loadTheme();
 
-    function logout() {
-      auth.signOut();
-    });
-
+    // Фильтры
     document.getElementById("filter-status").addEventListener("change", renderTasks);
     document.getElementById("filter-category").addEventListener("change", renderTasks);
   </script>
