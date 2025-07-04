@@ -185,11 +185,12 @@
     <ul id="task-list"></ul>
     <button class="btn-clear" onclick="clearCompleted()">Очистить выполненные</button>
   </div>
+
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js  "></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js  "></script>
   <script>
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+    // Конфиг Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyDvtrTy5L4q_4PKN2Gt-syH3n6MAYJOqXo",
       authDomain: "task-planner-f4dd7.firebaseapp.com",
@@ -200,7 +201,7 @@
       appId: "1:321703356517:web:8b0a2dc34e1587552bfe8c",
       measurementId: "G-64V5LHKLP8"
     };
-    // Инициализация Firebase
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const tasksRef = db.ref("tasks");
@@ -215,6 +216,8 @@
       window.webkitIndexedDB ||
       window.msIndexedDB;
 
+    let localTasksLoaded = false;
+
     function openDatabase() {
       return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, 1);
@@ -225,7 +228,7 @@
           }
         };
         request.onsuccess = (event) => resolve(event.target.result);
-        request.onerror = (event) => reject("Ошибка открытия IndexedDB");
+        request.onerror = () => reject("Ошибка открытия IndexedDB");
       });
     }
 
@@ -244,7 +247,6 @@
       const db = await openDatabase();
       const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
-
       store.clear();
       data.forEach(task => store.put(task));
       return new Promise((resolve, reject) => {
@@ -275,7 +277,7 @@
       const db = await openDatabase();
       const tx = db.transaction(STORE_NAME + "_meta", "readwrite");
       const store = tx.objectStore(STORE_NAME + "_meta");
-      store.put({ id: "theme", value: theme });
+      const metaStore = store.put({ id: "theme", value: theme });
     }
 
     function mergeOfflineAndCloudTasks(cloudTasks) {
@@ -338,6 +340,7 @@
       saveLocalTasks(tasks);
       saveTasksToCloud();
       setReminder(tasks.length - 1);
+      renderTasks();
     }
 
     function deleteTask(index) {
